@@ -1,0 +1,13 @@
+<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#f2f2f7"><title>Mis turnos</title><link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Jost:wght@400;500;600&display=swap" rel="stylesheet"><link rel="stylesheet" href="/app.css"><script>try{document.documentElement.dataset.theme=localStorage.getItem('bp_theme')||(matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light')}catch(e){}</script></head>
+<body><main class="wrap"><header class="bar"><span class="who">Mis turnos</span></header><div id="app"><div class="group pad" style="margin-top:18px"><div class="field" style="margin-top:0"><label for="w">Tu WhatsApp</label><input id="w" inputmode="tel" placeholder="2477 201614"></div><p class="err" id="e"></p><button class="btn primary" onclick="load()">Ver mis turnos</button><div id="ps" style="margin-top:12px"></div></div><div id="l"></div><p class="hint" style="text-align:center;margin-top:16px"><a href="/reservar/">Volver a reservar</a></p></div></main><div id="toast" class="toast"></div>
+<script src="/common.js"></script>
+<script>
+try{$('w').value=localStorage.getItem('bp_whatsapp')||''}catch(e){}
+const wa=()=>formatWA($('w').value);
+async function load(){$('e').textContent='';try{const r=await api('/my-turns?wa='+wa());$('l').innerHTML=r.turns.length?r.turns.map(t=>`<div class="group pad" style="margin-top:12px"><b>${esc(t.service_name)}</b>${t.items&&t.items.length?`<div class="sub">${t.items.map(i=>i.qty+' × '+esc(i.name)).join(' · ')}</div>`:''}<div class="sub">${esc(longDate(t.date))} · ${esc(t.time)} · ${esc(t.staff)}</div><div class="sub"><b>Total ${fmt(t.total)}</b></div><button class="btn" style="margin-top:10px" onclick="cancel('${t.id}')">Cancelar turno</button></div>`).join(''):'<div class="group pad" style="margin-top:12px"><b>No tenés turnos pendientes</b></div>'}catch(x){$('e').textContent=x.message}}
+Object.defineProperty(PUSH,'wa',{get:()=>wa(),set:()=>{}});
+PUSH.onchange=()=>{$('ps').innerHTML=PUSH.card('card')};
+PUSH.init(false);
+async function cancel(id,confirmed){if(!confirmed&&!confirm('¿Cancelar este turno?'))return;try{await post('/my-cancel',{id,wa:wa(),confirm:!!confirmed});toast('Turno cancelado');load()}catch(x){if(x.data&&x.data.late){if(confirm(x.message+'\n\n¿Cancelar igual?'))return cancel(id,true)}else $('e').textContent=x.message}}
+if($('w').value)load();
+</script></body></html>

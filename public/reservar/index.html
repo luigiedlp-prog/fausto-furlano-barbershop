@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="es" data-role="client">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#f2f2f7">
+<title>Reservá tu turno</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Jost:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/app.css">
+<link rel="manifest" href="/reservar/manifest.webmanifest"><link rel="apple-touch-icon" href="/icon-192.png"><script>if("serviceWorker"in navigator)navigator.serviceWorker.register("/sw.js").catch(()=>{})</script>
+<script>try{document.documentElement.dataset.theme=localStorage.getItem('bp_theme')||(matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light')}catch(e){}</script></head>
+<body>
+<main class="wrap">
+  <header class="bar"><span class="who" id="who">Turnos online</span></header>
+  <div id="app"></div>
+  <p class="hint" style="text-align:center;margin:18px 0 4px"><a href="/reservar/mis-turnos.html">Mis turnos / cancelar</a></p>
+  <footer class="credit"><a href="https://instagram.com/modus.grid" target="_blank" rel="noopener"><img src="/modusgrid.webp" alt="Logo de modus.grid" width="34" height="34"><span>Sistema hecho por <b>@modus.grid</b></span></a></footer>
+</main>
+<div id="toast" class="toast"></div>
+<script src="/common.js"></script>
+<script>
+let data,m=new URLSearchParams(location.search).get('modo')==='fila'?'fila':'turno',sel={service:null,staff:null,date:null,time:null,name:'',wa:'',bd:'',extras:[],products:{}},times=[],qi=null,rid=0;
+const keepWA=w=>{try{localStorage.setItem('bp_whatsapp',w)}catch(e){}};
+try{sel.wa=localStorage.getItem('bp_whatsapp')||''}catch(e){}
+const dateParts=d=>{const x=new Date(d+'T12:00:00');return{day:x.toLocaleDateString('es-AR',{weekday:'short'}).replace('.',''),num:x.getDate(),month:x.toLocaleDateString('es-AR',{month:'short'}).replace('.','')}};
+const ready=()=>m==='turno'?!!(sel.service&&sel.staff&&sel.time):!!(sel.service&&sel.staff);
+const okData=()=>sel.name.trim()&&formatWA(sel.wa).length===13;
+function setProgress(){const n=(sel.service?1:0)+(sel.service&&sel.staff?1:0)+(ready()?1:0)+(ready()&&okData()?1:0);document.querySelectorAll('.steps i').forEach((x,i)=>x.classList.toggle('on',i<Math.max(1,n)))}
+
+async function start(){
+  try{data=await api('/public');if(!sel.date)sel.date=data.today;$('who').textContent=data.name+' · Turnos online';renderBooking()}
+  catch(e){$('app').innerHTML='<div class="group pad" style="margin-top:22px"><h2 class="h2">No se pudo cargar</h2><p class="sub" style="margin-top:6px">Revisá tu conexión y probá de nuevo en unos segundos.</p><button class="btn primary" onclick="start()">Reintentar</button></div>'}
+}
+function renderBooking(){
+  $('app').innerHTML=`
+  <section class="hero"><div class="halo"><div class="mark">${data.logo?`<img src="/api/img/${data.logo}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`:ico('scissors')}</div></div><h1>${esc(data.name)}</h1><p>Reservá tu turno o sumate a la fila</p>${data.address?`<p class="small" style="margin-top:6px">${esc(data.address)}${data.phone?' · '+esc(data.phone):''}</p>`:''}${data.instagram?`<p class="small" style="margin-top:4px"><a href="https://instagram.com/${esc(data.instagram)}" target="_blank" rel="noopener">@${esc(data.instagram)}</a></p>`:''}</section>
+  ${(data.promos||[]).map(x=>`<div class="group pad" style="margin-top:14px;text-align:center"><b>${ico('tag')} ${esc(x.title)}</b><div class="sub">${x.kind==='2x1'?'2x1 · dos personas al precio de una':x.pct+'% off'} · hasta el ${esc(x.end.slice(8,10)+'/'+x.end.slice(5,7))}</div>${x.message?`<div class="small" style="margin-top:4px">${esc(x.message)}</div>`:''}</div>`).join('')}
+  <div class="steps"><i class="on"></i><i></i><i></i><i></i></div>
+  <section class="sec"><div class="seg" id="modes"><button data-m="turno"><b>Con turno</b><small>Elegís día y hora</small></button><button data-m="fila"><b>Sin turno</b><small>Orden de llegada · hoy</small></button></div></section>
+  <section class="sec"><div class="sechead"><b>Servicio</b><span>Elegí uno</span></div><div class="group" id="svcs"></div><div id="gst"></div><div id="adds"></div></section>
+  <section class="sec"><div class="sechead"><b>Barbero</b><span>Elegí con quién</span></div><div class="group" id="stf"></div></section>
+  <div id="when"></div>
+  <section class="sec"><div class="sechead"><b>Tus datos</b><span>Solo lo necesario</span></div><div class="group pad" id="dataBox">
+    <div class="field" style="margin-top:0"><label for="name">Nombre</label><input id="name" autocomplete="name" placeholder="Tu nombre" value="${esc(sel.name)}" oninput="sel.name=this.value;updateSummary()"></div>
+    <input id="hp" tabindex="-1" autocomplete="off" aria-hidden="true" style="position:absolute;left:-9999px;opacity:0"><div class="field"><label for="wa">WhatsApp</label><div class="pair"><input class="prefix" value="+54 9" disabled aria-label="Prefijo"><input id="wa" inputmode="tel" autocomplete="tel" placeholder="2477 201614" value="${esc(sel.wa?displayWA(sel.wa).replace(/^\+54 9 /,''):'')}" oninput="sel.wa=this.value;updateSummary()"></div><p class="hint">Ingresá tu número local, sin +54 9.</p></div>
+    <div class="field"><label for="bd">Cumpleaños (opcional)</label><input id="bd" type="date" value="${esc(sel.bd)}" onchange="sel.bd=this.value"><p class="hint">Para saludarte ese día.</p></div>
+    <div id="formError" class="err"></div></div></section>
+  <div id="prods"></div>
+  <div id="summary"></div>`;
+  document.querySelectorAll('#modes button').forEach(b=>b.onclick=()=>{m=b.dataset.m;sel.time=null;refresh()});
+  drawAll();if(ready())refresh()
+}
+function drawAll(){
+  document.querySelectorAll('#modes button').forEach(b=>b.classList.toggle('on',b.dataset.m===m));
+  $('svcs').innerHTML=data.services.map(s=>`<button class="svc ${sel.service?.id===s.id?'on':''}" onclick="pick('service','${s.id}')"><span class="ic">${s.photo?`<img src="/api/img/${s.photo}" alt="" loading="lazy" style="width:100%;height:100%;object-fit:cover;border-radius:12px">`:ico('scissors')}</span><span class="main"><b>${esc(s.name)}</b><small>${durationText(s.duration)}</small>${s.description?`<small style="display:block;margin-top:2px">${esc(s.description)}</small>`:''}</span><span class="pr">${s.orig?`<s style="opacity:.5;font-weight:400">${fmt(s.orig)}</s> `:''}${fmt(s.price)}</span><span class="ck">${ico('check')}</span></button>`).join('');
+  $('stf').innerHTML=data.staff.map(s=>`<button class="svc ${sel.staff?.id===s.id?'on':''}" onclick="pick('staff','${s.id}')"><span class="ic">${esc(initials(s.name))}</span><span class="main"><b>${esc(s.name)}</b></span><span class="ck">${ico('check')}</span></button>`).join('');
+  $('gst').innerHTML=sel.service&&sel.service.twofor?`<label class="group pad" style="display:flex;gap:10px;align-items:center;margin-top:10px"><input type="checkbox" ${sel.guest?'checked':''} onchange="sel.guest=this.checked;sel.time=null;refresh()"><span><b>Vengo con alguien (2x1)</b><br><small>Dos personas por el precio de una</small></span></label>`:'';
+  $('adds').innerHTML=addonsFor().length?`<div class="sechead" style="margin-top:14px"><b>Adicionales</b><span>Opcional</span></div><div class="group">${addonsFor().map(a=>`<label class="svc" style="cursor:pointer"><input type="checkbox" style="flex:none;width:auto" ${sel.extras.includes(a.id)?'checked':''} onchange="toggleEx('${a.id}',this.checked)"><span class="main"><b>${esc(a.name)}</b><small>+${durationText(a.duration)}${a.description?' · '+esc(a.description):''}</small></span><span class="pr">+${fmt(a.price)}</span></label>`).join('')}</div>`:'';
+  drawProds();drawWhen();updateSummary()
+}
+const addonsFor=()=>sel.service?(data.addons||[]).filter(a=>!a.addon_to||a.addon_to.split(',').includes(sel.service.id)):[];
+const exSel=()=>addonsFor().filter(a=>sel.extras.includes(a.id));
+const tot=()=>({price:sel.service.price+exSel().reduce((t,a)=>t+a.price,0),duration:sel.service.duration+exSel().reduce((t,a)=>t+a.duration,0),name:sel.service.name+exSel().map(a=>' + '+a.name).join('')});
+function drawProds(){const P=data.products||[],el=$('prods');if(!el)return;
+  el.innerHTML=P.length?`<section class="sec"><div class="sechead"><b>Productos</b><span>Opcional · los retirás en el local</span></div><div class="group">${P.map(p=>{const q=sel.products[p.id]||0,mx=p.left===null?10:Math.min(10,p.left);return `<div class="svc"><span class="ic">${p.photo?`<img src="/api/img/${p.photo}" alt="" loading="lazy" style="width:100%;height:100%;object-fit:cover;border-radius:12px">`:ico('tag')}</span><span class="main"><b>${esc(p.name)}</b><small>${p.soldout?'<b style="color:var(--bad,#ff453a)">Sin stock</b>':fmt(p.price)}${p.description?' · '+esc(p.description):''}</small></span>${p.soldout?'':`<span class="qty"><button type="button" onclick="qty('${p.id}',-1)" ${q?'':'disabled'} aria-label="Menos">−</button><b>${q}</b><button type="button" onclick="qty('${p.id}',1)" ${q>=mx?'disabled':''} aria-label="Más">+</button></span>`}</div>`}).join('')}</div></section>`:''}
+function qty(id,d){const p=data.products.find(x=>x.id===id),mx=p.left===null?10:Math.min(10,p.left);sel.products[id]=Math.max(0,Math.min(mx,(sel.products[id]||0)+d));if(!sel.products[id])delete sel.products[id];drawProds();updateSummary()}
+const prodSel=()=>(data.products||[]).filter(p=>sel.products[p.id]&&!p.soldout).map(p=>({...p,qty:sel.products[p.id]}));
+const prodTotal=()=>prodSel().reduce((t,p)=>t+p.qty*p.price,0);
+function toggleEx(id,on){sel.extras=on?[...sel.extras,id]:sel.extras.filter(x=>x!==id);sel.time=null;refresh()}
+function drawWhen(){
+  if(m==='fila'){
+    $('when').innerHTML=`<section class="sec"><div class="sechead"><b>Tu lugar</b><span>Hoy · orden de llegada</span></div><div class="group pad">${qi?`<b>${qi.ahead?`Hay ${qi.ahead} persona${qi.ahead===1?'':'s'} antes que vos`:'Serías el próximo'}</b>${qi.aviso?`<div class="note-warn">${ico('clock')}<span>Este barbero tiene un turno a las ${esc(qi.turno)}, así que puede que demores más. Podés anotarte igual.</span></div>`:''}`:'<p class="status">Elegí servicio y barbero para ver la fila.</p>'}</div></section>`;return}
+  const t0=new Date(data.today+'T12:00:00'),days=Array.from({length:data.days||3},(_,i)=>i).map(i=>{const d=new Date(t0);d.setDate(d.getDate()+i);return d.toLocaleDateString('en-CA')});
+  const dh=days.map((k,i)=>{const p=dateParts(k);return `<button class="${sel.date===k?'on':''}" onclick="pickDate('${k}')"><b>${i===0?'Hoy':i===1?'Mañana':i===2?'Pasado':p.day}</b><small>${p.day} ${p.num}</small></button>`}).join('');
+  const mo=times.filter(t=>+t.slice(0,2)<13),ta=times.filter(t=>+t.slice(0,2)>=13),g=(n,a)=>a.length?`<div class="tgroup"><div class="small">${n}</div><div class="times">${a.map(t=>`<button class="time ${sel.time===t?'on':''}" onclick="pickTime('${t}')">${t}</button>`).join('')}</div></div>`:'';
+  const tp=dateParts(sel.date);
+  $('when').innerHTML=`<section class="sec"><div class="sechead"><b>Día</b><span>${sel.service&&sel.staff?'Horarios según el servicio':'Primero elegí servicio y barbero'}</span></div><div class="seg" ${days.length>4?'style="overflow-x:auto;grid-auto-columns:minmax(76px,1fr)"':''}>${dh}</div></section>
+  <section class="sec"><div class="sechead"><b>Horario</b><span>${tp.day} ${tp.num} ${tp.month}</span></div><div class="group pad">${sel.service&&sel.staff?(times.length?g('Mañana',mo)+g('Tarde',ta):'<p class="status">No hay horarios disponibles ese día con este barbero.</p>'):'<p class="status">Elegí un servicio y un barbero para ver los horarios.</p>'}</div></section>`
+}
+async function refresh(){
+  times=[];qi=null;const my=++rid;
+  try{
+    if(m==='turno'&&sel.service&&sel.staff&&sel.date){const x=await api(`/availability?date=${sel.date}&service=${sel.service.id}&staff=${sel.staff.id}&guest=${G()}&extras=${exSel().map(a=>a.id).join(',')}`);if(my!==rid)return;times=x.times||[]}
+    if(m==='fila'&&sel.service&&sel.staff){const x=await api(`/queue-info?service=${sel.service.id}&staff=${sel.staff.id}&guest=${G()}&extras=${exSel().map(a=>a.id).join(',')}`);if(my!==rid)return;qi=x}
+  }catch(e){if(my===rid)toast(e.message)}
+  drawAll()
+}
+const G=()=>sel.guest&&sel.service&&sel.service.twofor?1:0;
+function pick(k,id){if(k==='service'){sel.guest=false;sel.extras=[]}if(k==='service')sel.service=data.services.find(s=>s.id===id);else sel.staff=data.staff.find(s=>s.id===id);sel.time=null;refresh()}
+function pickDate(d){sel.date=d;sel.time=null;refresh()}
+function pickTime(t){sel.time=t;drawWhen();updateSummary();$('summary')?.scrollIntoView({behavior:'smooth',block:'center'})}
+function updateSummary(){
+  const el=$('summary');if(!el)return;setProgress();
+  const box=$('dataBox');if(box)box.classList.toggle('locked',!ready());
+  if(!ready()){el.innerHTML=`<div class="dock"><div class="top"><div><span class="small">Tu resumen</span><b>${sel.service?(sel.staff?'Falta elegir horario':'Falta elegir barbero'):'Elegí servicio y barbero'}</b></div><span class="pr">${sel.service?fmt(tot().price+prodTotal()):''}</span></div></div>`;return}
+  const p=dateParts(sel.date||data.today);
+  el.innerHTML=`<div class="dock"><div class="top"><div><span class="small">${m==='turno'?'Tu turno':'Tu lugar en la fila'}</span><b>${esc(tot().name)}</b></div><span class="pr">${fmt(tot().price+prodTotal())}</span></div>
+  <div class="pills"><span class="pill">${ico('scissors')} ${esc(sel.staff.name)}</span>${m==='turno'?`<span class="pill">${ico('cal')} ${p.day} ${p.num} ${p.month}</span><span class="pill">${ico('clock')} ${esc(sel.time)}</span>`:`<span class="pill">${ico('users')} Hoy · sin turno</span>`}<span class="pill">${durationText(tot().duration)}</span>${prodSel().map(p=>`<span class="pill">${p.qty} × ${esc(p.name)}</span>`).join('')}</div>
+  <button class="btn primary" onclick="book()" ${okData()?'':'disabled'}>${m==='turno'?'Confirmar turno':'Anotarme en la fila'}</button>
+  <div class="hint">${okData()?'Revisá los datos y confirmá.':'Completá nombre y WhatsApp para confirmar.'}</div></div>`
+}
+async function book(){
+  const name=($('name')?.value||'').trim(),wa=formatWA($('wa')?.value||sel.wa),err=$('formError');
+  if(!name||wa.length!==13){if(err)err.textContent='Completá tu nombre y un WhatsApp argentino válido.';return}
+  sel.name=name;sel.wa=wa;keepWA(wa);
+  const btn=document.querySelector('.dock .primary');if(btn){btn.disabled=true;btn.textContent='Confirmando…'}
+  try{const r=await post(m==='turno'?'/book':'/queue',{service:sel.service.id,staff:sel.staff.id,date:sel.date,time:sel.time,name,whatsapp:wa,birthday:sel.bd,guest:!!G(),extras:exSel().map(a=>a.id),products:prodSel().map(p=>({id:p.id,qty:p.qty})),website:($('hp')||{}).value||''});showSuccess(r)}
+  catch(e){if(err)err.textContent=e.data?.error||e.message;if(/stock|Quedan|Producto/i.test(e.message||''))api('/public').then(d=>{data=d;sel.products={};drawProds();updateSummary()}).catch(()=>{});if(btn){btn.disabled=false;btn.textContent=m==='turno'?'Confirmar turno':'Anotarme en la fila'}}
+}
+function showSuccess(r){
+  window.scrollTo({top:0});const f=m==='fila';
+  $('app').innerHTML=`<section class="center" style="margin-top:14px"><div class="okmark">${ico('check')}</div><h1 class="title" style="margin:6px 0 4px">${f?'¡Ya estás en la fila!':'¡Listo, '+esc(sel.name.split(/\s+/)[0])+'!'}</h1><p class="sub">${f?'Te atiende':'Tu turno quedó registrado con'} ${esc(r.staff)}.</p>
+  <div class="ticket"><div class="trow"><span>Servicio</span><b>${esc(r.service)}</b></div><div class="trow"><span>Barbero</span><b>${esc(r.staff)}</b></div>${f?`<div class="trow"><span>Tu lugar</span><b>N° ${r.position}</b></div>`:`<div class="trow"><span>Fecha</span><b>${esc(longDate(r.date))}</b></div><div class="trow"><span>Hora</span><b>${esc(r.time)}</b></div>`}${r.products&&r.products.length?`<div class="trow"><span>Productos</span><b>${r.products.map(p=>p.qty+' × '+esc(p.name)).join(', ')}</b></div>`:''}<div class="trow"><span>Total</span><b>${fmt(r.total||r.price||sel.service.price)}</b></div></div>
+  <div class="place"><div class="small">Guardá esta pantalla como comprobante.</div>${!f&&data.late&&data.late.mode!=='off'?`<div class="small" style="margin-top:8px">${data.late.mode==='fee'?'Si cancelás con menos de '+data.late.hours+(data.late.hours===1?' hora':' horas')+' de anticipación, se registra un cargo del '+data.late.pct+'% del servicio.':'Si no podés venir, cancelá desde Mis turnos con tiempo.'}</div>`:''}</div>
+  <button class="btn primary" onclick="again()">Reservar otro</button></section>`
+}
+function again(){sel={service:null,staff:null,date:data.today,time:null,name:'',wa:sel.wa,bd:'',extras:[],products:{}};times=[];qi=null;start()}
+start();
+</script>
+</body>
+</html>
