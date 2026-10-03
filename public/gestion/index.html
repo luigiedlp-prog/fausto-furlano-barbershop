@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="es" data-role="admin">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#f2f2f7">
+<meta name="robots" content="noindex,nofollow">
+<title>Gestión</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Jost:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/app.css">
+<link rel="stylesheet" href="/gestion/gestion.css">
+<link rel="manifest" href="/gestion/manifest.webmanifest"><link rel="apple-touch-icon" href="/icon-192.png"><script>if("serviceWorker"in navigator)navigator.serviceWorker.register("/sw.js").catch(()=>{})</script>
+<script>try{document.documentElement.dataset.theme=localStorage.getItem('bp_theme')||(matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light')}catch(e){}</script></head>
+<body>
+<main class="wrap">
+  <header class="bar"><span class="who"><span class="mini" id="miniLogo"></span><span id="bn">Gestión</span></span>
+    <button class="glassbtn hidden" id="bellBtn" onclick="notifSheet()" aria-label="Notificaciones"></button>
+    <button class="glassbtn hidden" id="outBtn" onclick="logout()" aria-label="Salir"></button></header>
+  <div id="app"></div>
+</main>
+<nav class="tabbar hidden" id="tabbar"><div class="in" id="tabs"></div></nav>
+<div id="overlay" class="overlay" onclick="if(event.target===this)closeSheet()"><div id="sheet" class="sheet"></div></div>
+<div id="toast" class="toast"></div>
+<script src="/common.js"></script>
+<script src="/gestion/gestion.js"></script>
+</body>
+</html>
