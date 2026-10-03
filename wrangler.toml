@@ -1,0 +1,24 @@
+name = "fausto-furlano"
+main = "worker.js"
+compatibility_date = "2026-09-10"
+
+# Páginas estáticas (/reservar/, /gestion/) y estilos. Solo /api/* pasa primero por el Worker.
+[assets]
+directory = "./public"
+binding = "ASSETS"
+run_worker_first = ["/api/*"]
+
+# Base de datos D1: sin database_id a propósito. Cloudflare la crea sola en el primer deploy
+# y la deja vinculada. Las tablas las crea el Worker al primer uso.
+[[d1_databases]]
+binding = "DB"
+
+# Cron: cada 10 minutos revisa turnos próximos y manda recordatorios push.
+[triggers]
+crons = ["*/10 * * * *"]
+
+[observability.logs]
+enabled = true
+head_sampling_rate = 1
+invocation_logs = true
+persist = true
