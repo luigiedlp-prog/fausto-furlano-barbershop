@@ -120,3 +120,5 @@
 .cnote{margin-top:6px;font-size:13px;color:var(--sub)}
 .cnote svg{width:14px;height:14px;vertical-align:-2px}
 .linkbtn{background:none;border:0;padding:6px 0 0;font-size:13px;color:var(--gold-ink,#d4af5a);font-weight:600;cursor:pointer}
+
+.mini{background:#000;overflow:hidden;padding:0}.mini img{display:block}

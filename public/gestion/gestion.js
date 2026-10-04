@@ -5,7 +5,7 @@ const hh=s=>s?new Date(s.replace(' ','T')+'Z').toLocaleTimeString('es-AR',{hour:
 const dm=d=>d?d.slice(8)+'/'+d.slice(5,7):'—';
 const TABS={dia:['Mi día','cal'],gan:['Ganancias','chart'],eq:['Equipo','users'],cli:['Clientes','book'],fin:['Finanzas','wallet'],cfg:['Ajustes','gear'],ag:['Agenda','clock'],mi:['Cuenta','lock']};
 const sec=(t,s,b)=>`<section class="sec"><div class="sechead"><b>${t}</b><span>${s||''}</span></div>${b}</section>`;
-$('miniLogo').innerHTML=ico('scissors');$('outBtn').innerHTML=ico('out');$('bellBtn').innerHTML=ico('bell')+'<span class="nbadge hidden" id="nb"></span>';
+$('miniLogo').innerHTML=`<img src="/logo.png" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`;$('outBtn').innerHTML=ico('out');$('bellBtn').innerHTML=ico('bell')+'<span class="nbadge hidden" id="nb"></span>';
 const badge=n=>{const b=$('nb');if(!b)return;b.textContent=n>9?'9+':n;b.classList.toggle('hidden',!n)};
 
 async function load(){M=await api('/me');A=M.me.role==='owner'?await api('/admin'):null}
@@ -23,7 +23,7 @@ const tabsFor=()=>M.me.role==='owner'?['dia','ag','eq','cli','fin','cfg']:['dia'
 function go(t){tab=t;draw();scrollTo(0,0)}
 function draw(){
   const ts=tabsFor();if(!ts.includes(tab))tab='dia';
-  $('bn').textContent=M.me.name+' · Gestión';$('miniLogo').innerHTML=M.logo?`<img src="/api/img/${M.logo}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`:ico('scissors');$('outBtn').classList.remove('hidden');$('bellBtn').classList.remove('hidden');badge(M.notif);$('tabbar').classList.remove('hidden');
+  $('bn').textContent=M.me.name+' · Gestión';$('miniLogo').innerHTML=M.logo?`<img src="/api/img/${M.logo}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`:`<img src="/logo.png" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`;$('outBtn').classList.remove('hidden');$('bellBtn').classList.remove('hidden');badge(M.notif);$('tabbar').classList.remove('hidden');
   $('tabs').style.setProperty('--n',ts.length);
   $('tabs').innerHTML=ts.map(t=>`<button class="tab ${tab===t?'active':''}" onclick="go('${t}')">${ico(TABS[t][1])}${TABS[t][0]}</button>`).join('');
   $('app').innerHTML=(M.weak?weakBanner():'')+({dia:vDia,gan:vGan,eq:vEq,cli:vCli,fin:vFin,cfg:vCfg,ag:vAg,mi:vMi}[tab])();
@@ -288,7 +288,7 @@ async function sumImage(){try{
   const d=await api('/admin/summary'),W=1080,nb=d.by.length,H=Math.max(1350,1120+nb*92+(d.products.u?110:0)),c=document.createElement('canvas');c.width=W;c.height=H;const x=c.getContext('2d'),F='system-ui,-apple-system,Segoe UI,Roboto,sans-serif',T=(t,px,y,col,al,wt)=>{x.font=(wt||'600')+' '+px+'px '+F;x.fillStyle=col;x.textAlign=al||'center';x.fillText(t,al==='left'?70:al==='right'?W-70:W/2,y)};
   x.fillStyle='#111214';x.fillRect(0,0,W,H);x.fillStyle='#d4af5a';x.fillRect(0,0,W,14);
   let y=120;
-  if(A.settings.logo){try{const im=new Image();im.src='/api/img/'+A.settings.logo;await new Promise((ok,no)=>{im.onload=ok;im.onerror=no});x.save();x.beginPath();x.arc(W/2,110,60,0,7);x.clip();x.drawImage(im,W/2-60,50,120,120);x.restore();y=240}catch(e){}}
+  {try{const im=new Image();im.src=A.settings.logo?'/api/img/'+A.settings.logo:'/logo.png';await new Promise((ok,no)=>{im.onload=ok;im.onerror=no});x.save();x.beginPath();x.arc(W/2,110,60,0,7);x.clip();x.drawImage(im,W/2-60,50,120,120);x.restore();y=240}catch(e){}}
   T(A.settings.name,y>200?50:56,y,'#ffffff','center','700');y+=64;
   const f=new Date(d.date+'T12:00:00Z').toLocaleDateString('es-AR',{weekday:'long',day:'numeric',month:'long',timeZone:'UTC'});T(f.charAt(0).toUpperCase()+f.slice(1),36,y,'#9a9aa0','center','500');y+=70;
   rr(x,60,y,W-120,300,36,'#1c1d21');T('TOTAL DEL DÍA',30,y+70,'#9a9aa0','center','600');T(fmt(d.total),128,y+190,'#d4af5a','center','800');T(d.n?d.n+' servicio'+(d.n===1?'':'s'):'Sin servicios registrados',34,y+260,'#ffffff','center','500');y+=340;
