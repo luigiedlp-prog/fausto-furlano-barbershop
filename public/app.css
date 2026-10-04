@@ -475,7 +475,7 @@ html[data-role=client][data-theme=light]::before{
 /* ===== Fondo de la barbería (solo /reservar, tema oscuro): foto 9:16 fija ===== */
 .roomfx{display:none}
 html[data-theme=dark] body.room .roomfx{display:block;position:fixed;inset:0;z-index:-1;overflow:hidden;pointer-events:none;background:#000;contain:strict}
-body.room .roomfx img{position:absolute;left:50%;top:0;width:min(100vw,620px);height:100%;transform:translateX(-50%);object-fit:cover;object-position:center top;opacity:.36}
+body.room .roomfx img{position:absolute;left:50%;top:0;width:min(100vw,620px);height:100%;transform:translateX(-50%);object-fit:cover;object-position:center top;opacity:.10}
 /* en pantallas anchas los costados se funden con el negro */
 @media (min-width:700px){html[data-theme=dark] body.room .roomfx{-webkit-mask-image:linear-gradient(90deg,transparent calc(50% - 310px),#000 calc(50% - 230px),#000 calc(50% + 230px),transparent calc(50% + 310px));mask-image:linear-gradient(90deg,transparent calc(50% - 310px),#000 calc(50% - 230px),#000 calc(50% + 230px),transparent calc(50% + 310px))}}
 /* velo negro arriba y abajo + tinte dorado para que se funda con los círculos brillantes */
@@ -496,4 +496,4 @@ html[data-theme=dark] body.room::before{background:radial-gradient(60% 100% at 5
 html[data-theme=dark] body.room::after{background:radial-gradient(closest-side,rgba(212,175,90,.2),transparent)}
 
 /* Zoom general en celulares y tablets (como achicar el zoom del navegador). Escritorio ya tiene el suyo (75%) más arriba. Cambiá .85 por .8 o .9 a gusto. */
-@media not all and (min-width:700px) and (hover:hover) and (pointer:fine){html[data-role=client]{zoom:.85}body.room .roomfx img{width:100%}}
+@media not all and (min-width:700px) and (hover:hover) and (pointer:fine){html[data-role=client]{zoom:.75}body.room .roomfx img{width:100%}}
