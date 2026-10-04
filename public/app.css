@@ -474,24 +474,26 @@ html[data-role=client][data-theme=light]::before{
 
 /* ===== Fondo de la barbería (solo /reservar, tema oscuro) ===== */
 .roomfx{display:none}
-html[data-theme=dark] body.room .roomfx{display:block;position:fixed;inset:0;z-index:-1;overflow:hidden;pointer-events:none;background:#000}
-body.room .roomfx img{position:absolute;left:50%;top:0;width:min(100vw,620px);min-height:100vh;min-height:100dvh;height:auto;object-fit:cover;object-position:top;opacity:.34;transform:translate3d(-50%,0,0);will-change:transform;filter:saturate(.85) contrast(1.06) brightness(.95);
-  -webkit-mask-image:linear-gradient(90deg,transparent,#000 14%,#000 86%,transparent);mask-image:linear-gradient(90deg,transparent,#000 14%,#000 86%,transparent)}
-@media (max-width:620px){body.room .roomfx img{-webkit-mask-image:none;mask-image:none}}
+html[data-theme=dark] body.room .roomfx{display:block;position:fixed;inset:0;z-index:-1;overflow:hidden;pointer-events:none;background:#000;contain:strict}
+body.room .roomfx img{position:absolute;left:50%;top:0;width:min(100vw,620px);min-height:100vh;min-height:100dvh;height:auto;object-fit:cover;object-position:top;opacity:.34;transform:translate3d(-50%,0,0);will-change:transform;backface-visibility:hidden}
+/* en pantallas anchas los costados se funden con el negro (la máscara va en el contenedor fijo, no en la foto que se mueve) */
+@media (min-width:700px){html[data-theme=dark] body.room .roomfx{-webkit-mask-image:linear-gradient(90deg,transparent calc(50% - 310px),#000 calc(50% - 230px),#000 calc(50% + 230px),transparent calc(50% + 310px));mask-image:linear-gradient(90deg,transparent calc(50% - 310px),#000 calc(50% - 230px),#000 calc(50% + 230px),transparent calc(50% + 310px))}}
+/* con scroll nativo: la foto baja sola, pegada al scroll de la página */
+@keyframes roompan{from{transform:translate3d(-50%,0,0)}to{transform:translate3d(-50%,calc(var(--pan,0px)*-1),0)}}
+@supports (animation-timeline:scroll()){html.roomscroll body.room .roomfx img{animation:roompan linear both;animation-timeline:scroll(root block)}}
 /* velo negro arriba y abajo + tinte dorado para que se funda con los círculos brillantes */
 html[data-theme=dark] body.room .roomfx::after{content:"";position:absolute;inset:0;background:
   radial-gradient(70% 38% at 50% 0,rgba(212,175,90,.16),transparent 72%),
   radial-gradient(50% 30% at 85% 100%,rgba(212,175,90,.10),transparent 75%),
   linear-gradient(180deg,rgba(0,0,0,.55),rgba(0,0,0,.12) 28%,rgba(0,0,0,.12) 72%,rgba(0,0,0,.6))}
-/* todo lo de adelante, más transparente para que se vea la foto detrás */
-html[data-theme=dark] body.room .group,html[data-theme=dark] body.room .ticket,html[data-theme=dark] body.room .place{background:rgba(16,16,19,.58);-webkit-backdrop-filter:blur(14px) saturate(1.2);backdrop-filter:blur(14px) saturate(1.2)}
-html[data-theme=dark] body.room .group .group{background:rgba(34,34,38,.45)}
-html[data-theme=dark] body.room .seg{background:rgba(34,34,38,.5);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px)}
-html[data-theme=dark] body.room .seg button.on{background:rgba(43,43,48,.78)}
-html[data-theme=dark] body.room .time,html[data-theme=dark] body.room .field input:not([type=checkbox]){background:rgba(34,34,38,.55)}
-html[data-theme=dark] body.room .dock{background:rgba(22,22,25,.7)}
-html[data-theme=dark] body.room .halo::before{opacity:.9}
-/* fix: el body tapaba la foto (tenía fondo propio). Se hace transparente para que se vea el fondo y los brillos dorados queden encima */
+/* tarjetas translúcidas SIN desenfoque (el desenfoque sobre un fondo que se mueve es lo que trababa el scroll) */
+html[data-theme=dark] body.room .group,html[data-theme=dark] body.room .ticket,html[data-theme=dark] body.room .place{background:rgba(16,16,19,.72)}
+html[data-theme=dark] body.room .group .group{background:rgba(34,34,38,.5)}
+html[data-theme=dark] body.room .seg{background:rgba(34,34,38,.6)}
+html[data-theme=dark] body.room .seg button.on{background:rgba(43,43,48,.85)}
+html[data-theme=dark] body.room .time,html[data-theme=dark] body.room .field input:not([type=checkbox]){background:rgba(34,34,38,.62)}
+html[data-theme=dark] body.room .dock{background:rgba(22,22,25,.88);-webkit-backdrop-filter:none;backdrop-filter:none}
+/* el body no debe tapar la foto, y los brillos dorados quedan encima */
 html[data-theme=dark] body.room{background:transparent}
 html[data-theme=dark] body.room::before{background:radial-gradient(60% 100% at 50% 0,rgba(212,175,90,.34),rgba(212,175,90,.08) 60%,transparent 78%)}
 html[data-theme=dark] body.room::after{background:radial-gradient(closest-side,rgba(212,175,90,.2),transparent)}
