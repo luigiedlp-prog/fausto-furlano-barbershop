@@ -413,11 +413,7 @@ html[data-theme=dark] .contact a svg.i{color:var(--gold)}
 .contact a{animation:rise2 .5s both}.contact a:nth-child(1){animation-delay:.7s}.contact a:nth-child(2){animation-delay:.8s}.contact a:nth-child(3){animation-delay:.9s}
 
 /* Encabezado en una sola línea */
-.hero .meta{white-space:nowrap;max-width:100%;font-size:clamp(7px,2.3vw,12px);letter-spacing:0;text-transform:none;color:var(--sub);margin-top:8px;overflow:visible}
 .hero .contact{margin-top:10px}
-/* Postes a los costados del logo */
-.halo .pole{position:absolute;top:50%;margin-top:-26px;height:52px;width:11px;z-index:2}
-.halo .pole.l{left:-46px}.halo .pole.r{right:-46px}
 /* Fotos más grandes en servicios y productos */
 .svc .ic.ph{width:92px;height:92px;border-radius:16px;overflow:hidden;background:#000}
 .svc .ic.ph img{width:100%;height:100%;object-fit:cover;border-radius:0}
@@ -428,3 +424,34 @@ html[data-theme=dark] .contact a svg.i{color:var(--gold)}
 /* Descripción de servicios: máximo 2 líneas */
 .svc .main small+small{display:-webkit-box!important;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;font-size:13px;line-height:1.3;margin-top:2px}
 .svc .pr{white-space:nowrap}
+
+/* ===== Ajustes visuales ===== */
+/* Logo principal +2% */
+.halo{width:151px;height:151px}
+/* Línea de datos en una sola fila, con un poste al inicio y otro al final de esa línea */
+.hero .metarow{display:flex;align-items:center;justify-content:center;gap:7px;width:100%;margin-top:8px}
+.hero .metarow .pole{position:static;width:9px;height:24px;margin:0;flex:none}
+.hero .meta{white-space:nowrap;margin:0;font-size:clamp(6px,2.12vw,11.5px);letter-spacing:0;text-transform:none;color:var(--sub);min-width:0}
+.hero .contact{margin-top:10px}
+/* Barberos y servicios sin foto: círculo del mismo tamaño que las fotos */
+.svc .ic.lt{width:92px;height:92px;border-radius:50%;font-family:var(--display);font-size:36px;font-weight:600;letter-spacing:.02em}
+.svc .ic.lt svg.i{width:34px;height:34px}
+.svc:has(.ic.lt){padding-top:12px;padding-bottom:12px}
+.svc.on .ic.lt{box-shadow:0 0 0 2px var(--gold,#d4af5a),0 0 16px var(--glow)}
+/* Adicionales: casilla propia (la nativa queda oculta pero accesible) */
+.svc input.sr{position:absolute;opacity:0;width:1px;height:1px;pointer-events:none}
+.svc:has(input.sr:focus-visible){outline:2px solid var(--gold,#d4af5a);outline-offset:-2px}
+.svc.addon.on .ck.sq{background:var(--gold);border-color:var(--gold);color:#fff}
+.svc .ck.sq{border-radius:8px}
+/* Enlaces con la paleta de la página (antes salían azules) */
+.hint a{color:var(--gold-ink);font-size:14px;text-decoration:underline;text-decoration-color:var(--line2);text-underline-offset:3px}
+.hint a:hover{text-decoration-color:currentColor}
+/* Modo oscuro: pasos sin completar y aviso con buen contraste */
+html[data-theme=dark] .steps i:not(.on){background:var(--card3)}
+html[data-theme=dark] .note-warn{color:var(--gold2)}
+/* Tarjetas dentro de tarjetas: sin doble borde dorado */
+.group .group{border-left-width:1px;box-shadow:none;background:var(--card2)}
+/* Filas con foto: más lugar para el texto */
+.svc:has(.ic.ph),.svc:has(.ic.lt){gap:12px}
+.svc .pr{font-size:20px}
+.svc .main small+small{overflow-wrap:anywhere;hyphens:auto}
