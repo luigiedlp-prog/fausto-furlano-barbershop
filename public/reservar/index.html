@@ -21,13 +21,14 @@
 </main>
 <div id="toast" class="toast"></div>
 <script>
-/* Fondo de la barbería: la foto es larga y a medida que scrolleás se va descubriendo hacia abajo */
-(function(){var im=document.getElementById('roomImg');if(!im)return;var raf=0;
-function upd(){raf=0;var vh=window.innerHeight,ih=im.offsetHeight,max=document.documentElement.scrollHeight-vh,p=max>0?Math.min(1,Math.max(0,window.scrollY/max)):0;
-im.style.transform='translate3d(-50%,'+(-Math.max(0,ih-vh)*p).toFixed(1)+'px,0)'}
+/* Fondo de la barbería: la foto es larga y al scrollear se va descubriendo hacia abajo.
+   Si el navegador soporta animaciones ligadas al scroll, lo hace el CSS (fluido, sin JS en cada scroll). Si no, usa JS. */
+(function(){var im=document.getElementById('roomImg');if(!im)return;var raf=0,css=window.CSS&&CSS.supports&&CSS.supports('animation-timeline: scroll()');
+function pan(){var d=Math.max(0,im.offsetHeight-window.innerHeight);im.style.setProperty('--pan',d+'px');return d}
+function upd(){raf=0;var d=pan();if(css)return;var max=document.documentElement.scrollHeight-window.innerHeight,p=max>0?Math.min(1,Math.max(0,window.scrollY/max)):0;im.style.transform='translate3d(-50%,'+(-d*p).toFixed(1)+'px,0)'}
 function ask(){if(!raf)raf=requestAnimationFrame(upd)}
-addEventListener('scroll',ask,{passive:true});addEventListener('resize',ask);im.addEventListener('load',ask);
-if('ResizeObserver' in window)new ResizeObserver(ask).observe(document.body);ask()})();
+if(css)document.documentElement.classList.add('roomscroll');else addEventListener('scroll',ask,{passive:true});
+addEventListener('resize',ask);im.addEventListener('load',ask);ask()})();
 </script>
 <script src="/common.js"></script><script src="/fx.js" defer></script>
 <script>
