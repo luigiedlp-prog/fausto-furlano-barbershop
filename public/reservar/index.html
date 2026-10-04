@@ -11,7 +11,8 @@
 <link rel="stylesheet" href="/app.css">
 <link rel="manifest" href="/reservar/manifest.webmanifest"><link rel="icon" href="/icon-192.png" type="image/png"><link rel="apple-touch-icon" href="/apple-touch-icon.png"><script>if("serviceWorker"in navigator)navigator.serviceWorker.register("/sw.js").catch(()=>{})</script>
 <script>try{document.documentElement.dataset.theme=localStorage.getItem('bp_theme')||'dark'}catch(e){}</script></head>
-<body>
+<body class="room">
+<div class="roomfx" aria-hidden="true"><img id="roomImg" src="/img/sala.webp" alt="" width="512" height="2064" decoding="async"></div>
 <main class="wrap">
   <header class="bar"><span class="who" id="who">Turnos online</span></header>
   <div id="app"></div>
@@ -19,6 +20,15 @@
   <footer class="credit"><a href="https://instagram.com/modus.grid" target="_blank" rel="noopener"><img src="/modusgrid.webp" alt="Logo de modus.grid" width="34" height="34"><span>Sistema hecho por <b>@modus.grid</b></span></a></footer>
 </main>
 <div id="toast" class="toast"></div>
+<script>
+/* Fondo de la barbería: la foto es larga y a medida que scrolleás se va descubriendo hacia abajo */
+(function(){var im=document.getElementById('roomImg');if(!im)return;var raf=0;
+function upd(){raf=0;var vh=window.innerHeight,ih=im.offsetHeight,max=document.documentElement.scrollHeight-vh,p=max>0?Math.min(1,Math.max(0,window.scrollY/max)):0;
+im.style.transform='translate3d(-50%,'+(-Math.max(0,ih-vh)*p).toFixed(1)+'px,0)'}
+function ask(){if(!raf)raf=requestAnimationFrame(upd)}
+addEventListener('scroll',ask,{passive:true});addEventListener('resize',ask);im.addEventListener('load',ask);
+if('ResizeObserver' in window)new ResizeObserver(ask).observe(document.body);ask()})();
+</script>
 <script src="/common.js"></script><script src="/fx.js" defer></script>
 <script>
 let data,m=new URLSearchParams(location.search).get('modo')==='fila'?'fila':'turno',sel={service:null,staff:null,date:null,time:null,name:'',wa:'',bd:'',extras:[],products:{}},times=[],qi=null,rid=0;
