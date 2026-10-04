@@ -491,3 +491,7 @@ html[data-theme=dark] body.room .seg button.on{background:rgba(43,43,48,.78)}
 html[data-theme=dark] body.room .time,html[data-theme=dark] body.room .field input:not([type=checkbox]){background:rgba(34,34,38,.55)}
 html[data-theme=dark] body.room .dock{background:rgba(22,22,25,.7)}
 html[data-theme=dark] body.room .halo::before{opacity:.9}
+/* fix: el body tapaba la foto (tenía fondo propio). Se hace transparente para que se vea el fondo y los brillos dorados queden encima */
+html[data-theme=dark] body.room{background:transparent}
+html[data-theme=dark] body.room::before{background:radial-gradient(60% 100% at 50% 0,rgba(212,175,90,.34),rgba(212,175,90,.08) 60%,transparent 78%)}
+html[data-theme=dark] body.room::after{background:radial-gradient(closest-side,rgba(212,175,90,.2),transparent)}
