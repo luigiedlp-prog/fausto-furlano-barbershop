@@ -35,6 +35,7 @@ const SCHEMA = [
 `CREATE TABLE IF NOT EXISTS bp_sessions (token TEXT PRIMARY KEY,staff_id TEXT NOT NULL,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`,
 ];
 
+const NEW_SERVICES = [['s1', 'Corte de cabello', 15000, 20, 'Corte a tu estilo', 'corte', 0], ['s2', 'Barba', 15000, 15, 'Afeitado contemporáneo', 'barba', 0], ['s3', 'Corte y barba', 17000, 20, 'Corte a tu estilo + afeitado contemporáneo', 'barba', 0], ['s4', 'Corte, barba y lavado', 22000, 30, 'Corte + afeitado contemporáneo + lavado', 'lavado', 0], ['s5', 'Servicio completo', 28000, 40, 'Corte, afeitado tradicional con toallas al vapor y lavado', 'afeitado', 0], ['s6', 'Tratamiento facial', 18000, 20, 'Mascarilla con vapor', 'facial', 1]]; // Precios de ejemplo: se cambian desde Gestión
 let ready = false;
 async function init(db) {
   if (ready) return;
@@ -62,21 +63,33 @@ async function init(db) {
     const q = [];
     for (const [id, name, role, pin] of [['t_owner', 'Fausto', 'owner', '1234'], ['t_b1', 'Eric', 'barber', '1111'], ['t_b2', 'Santino', 'barber', '2222'], ['t_b3', 'Santino E.', 'barber', '3333'], ['t_b4', 'Ale', 'barber', '4444']])
       q.push(db.prepare('INSERT INTO bp_staff(id,name,role,pin_hash) VALUES(?,?,?,?)').bind(id, name, role, await hash(pin)));
-    for (const [id, name, price, dur] of [['s1', 'Barba', 15000, 15], ['s2', 'Corte de cabello + barba', 17000, 20], ['s3', 'Corte de cabello + barba + lavado', 22000, 30], ['s4', 'Corte de cabello + barba + afeitado tradicional + lavado', 28000, 40]])
-      q.push(db.prepare('INSERT INTO bp_services(id,name,price,duration) VALUES(?,?,?,?)').bind(id, name, price, dur));
-    q.push(db.prepare("INSERT INTO bp_services(id,name,price,duration,addon) VALUES('s5','Tratamiento facial',18000,20,1)"));
+    for (const [id, name, price, dur, desc, ph, add] of NEW_SERVICES)
+      q.push(db.prepare('INSERT INTO bp_services(id,name,price,duration,description,photo,addon) VALUES(?,?,?,?,?,?,?)').bind(id, name, price, dur, desc, 'static-' + ph, add));
     const day = [['08:00', '21:00']];
     q.push(db.prepare('INSERT INTO bp_settings(k,v) VALUES(?,?),(?,?),(?,?),(?,?),(?,?),(?,?),(?,?)').bind('name', 'Fausto Furlano Buti Barber Shop', 'commission', '50', 'schedule', JSON.stringify({ 1: day, 2: day, 3: day, 4: day, 5: day, 6: day }), 'address', 'Av. de Mayo 545, Pergamino', 'instagram', 'fausto_furlano', 'phone', '+54 9 2477 581140', 'book_days', '3'));
     await db.batch(q);
   }
   if (!(await db.prepare("SELECT v FROM bp_settings WHERE k='seed_media'").first())) { // Fotos de servicios y productos de Fausto (una sola vez)
     const q = [];
-    for (const [id, f] of [['s1', 'barba'], ['s2', 'corte'], ['s3', 'lavado'], ['s4', 'afeitado'], ['s5', 'facial']])
+    for (const [id, , , , , f] of NEW_SERVICES)
       q.push(db.prepare("UPDATE bp_services SET photo=? WHERE id=? AND (photo IS NULL OR photo='')").bind('static-' + f, id));
     if (!(await db.prepare('SELECT COUNT(*) n FROM bp_products').first()).n)
       for (const [id, name, desc, f] of [['pr_balsamo', 'Bálsamo para barba', 'Hidratación profunda y fijación ligera · 100 ml', 'balsamo'], ['pr_cera', 'Cera pomada mate', 'Fijación fuerte, acabado natural · 100 ml', 'cera'], ['pr_gel', 'Gel estilizador', 'Fijación extra fuerte, efecto mojado · 100 ml', 'gel']]) // Inactivos hasta cargar precio y stock
         q.push(db.prepare('INSERT INTO bp_products(id,name,description,price,stock,track,low,comm_pct,photo,active) VALUES(?,?,?,?,?,?,?,?,?,?)').bind(id, name, desc, 0, 0, 1, 3, 0, 'static-' + f, 0));
     q.push(db.prepare("INSERT OR REPLACE INTO bp_settings(k,v) VALUES('seed_media','1')"));
+    await db.batch(q);
+  }
+  if (!(await db.prepare("SELECT v FROM bp_settings WHERE k='svc_v3'").first())) { // Servicios reales de Fausto: solo si siguen siendo los de ejemplo sin tocar y no hay turnos
+    const SETS = [{ s1: 'Barba', s2: 'Corte de cabello + barba', s3: 'Corte de cabello + barba + lavado', s4: 'Corte de cabello + barba + afeitado tradicional + lavado', s5: 'Tratamiento facial' }, { s1: 'Corte de cabello', s2: 'Corte + barba + lavado', s3: 'Corte + afeitado tradicional + lavado', s4: 'Barba contemporánea', s5: 'Barba tradicional' }];
+    const cur = (await db.prepare('SELECT id,name FROM bp_services').all()).results;
+    const used = (await db.prepare('SELECT COUNT(*) n FROM bp_appts').first()).n;
+    const q = [];
+    if (!used && cur.length === 5 && SETS.some(o => cur.every(r => o[r.id] === r.name))) {
+      q.push(db.prepare('DELETE FROM bp_services'));
+      for (const [id, name, price, dur, desc, ph, add] of NEW_SERVICES)
+        q.push(db.prepare('INSERT INTO bp_services(id,name,price,duration,description,photo,addon) VALUES(?,?,?,?,?,?,?)').bind(id, name, price, dur, desc, 'static-' + ph, add));
+    }
+    q.push(db.prepare("INSERT OR REPLACE INTO bp_settings(k,v) VALUES('svc_v3','1')"));
     await db.batch(q);
   }
   ready = true;

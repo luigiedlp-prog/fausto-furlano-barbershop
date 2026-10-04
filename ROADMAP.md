@@ -5,7 +5,7 @@ Estado: ✅ hecho · 🛠 a mano al publicar · ⬜ pendiente · ❓ depende de 
 ## Datos ya definidos
 - **Local:** Fausto Furlano Buti Barber Shop · Av. de Mayo 545, Pergamino · Instagram @fausto_furlano
 - **Equipo:** Fausto (dueño), Eric, Santino, Santino E., Ale · comisión 50% a los barberos, pago mensual
-- **Servicios (precio · duración):** Barba $15.000 · 15 min | Corte de cabello + barba $17.000 · 20 min | Corte de cabello + barba + lavado $22.000 · 30 min | Corte de cabello + barba + afeitado tradicional + lavado $28.000 · 40 min
+- **Servicios (precio · duración):** Corte de cabello $15.000 · 20 min (precio de prueba) | Barba (afeitado contemporáneo) $15.000 · 15 min | Corte y barba $17.000 · 20 min | Corte, barba y lavado $22.000 · 30 min | Servicio completo (afeitado tradicional con toallas al vapor) $28.000 · 40 min
 - **Adicional:** Tratamiento facial $18.000 · 20 min (se suma a otro servicio)
 - **Horario:** lunes a sábado, de 8 a 21 hs, sin corte al mediodía (editable desde el panel)
 - **Turnos:** cada 15 minutos · se reserva hasta 3 días (hoy y los 2 siguientes), igual que BarberFlowBR · aviso al cancelar con menos de 1 hora
