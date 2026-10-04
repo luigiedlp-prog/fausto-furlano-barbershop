@@ -3,13 +3,13 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#f2f2f7">
-<title>Reservá tu turno</title>
+<meta name="theme-color" content="#f2f2f7"><meta name="description" content="Fausto Furlano Buti Barber Shop, Pergamino. Cortes adaptados a tu estilo. +10 años de experiencia. Reservá tu turno online.">
+<title>Fausto Furlano Buti Barber Shop · Reservá tu turno</title>
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Jost:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/app.css">
-<link rel="manifest" href="/reservar/manifest.webmanifest"><link rel="apple-touch-icon" href="/icon-192.png"><script>if("serviceWorker"in navigator)navigator.serviceWorker.register("/sw.js").catch(()=>{})</script>
+<link rel="manifest" href="/reservar/manifest.webmanifest"><link rel="icon" href="/icon-192.png" type="image/png"><link rel="apple-touch-icon" href="/apple-touch-icon.png"><script>if("serviceWorker"in navigator)navigator.serviceWorker.register("/sw.js").catch(()=>{})</script>
 <script>try{document.documentElement.dataset.theme=localStorage.getItem('bp_theme')||(matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light')}catch(e){}</script></head>
 <body>
 <main class="wrap">
@@ -19,7 +19,7 @@
   <footer class="credit"><a href="https://instagram.com/modus.grid" target="_blank" rel="noopener"><img src="/modusgrid.webp" alt="Logo de modus.grid" width="34" height="34"><span>Sistema hecho por <b>@modus.grid</b></span></a></footer>
 </main>
 <div id="toast" class="toast"></div>
-<script src="/common.js"></script>
+<script src="/common.js"></script><script src="/fx.js" defer></script>
 <script>
 let data,m=new URLSearchParams(location.search).get('modo')==='fila'?'fila':'turno',sel={service:null,staff:null,date:null,time:null,name:'',wa:'',bd:'',extras:[],products:{}},times=[],qi=null,rid=0;
 const keepWA=w=>{try{localStorage.setItem('bp_whatsapp',w)}catch(e){}};
@@ -30,12 +30,12 @@ const okData=()=>sel.name.trim()&&formatWA(sel.wa).length===13;
 function setProgress(){const n=(sel.service?1:0)+(sel.service&&sel.staff?1:0)+(ready()?1:0)+(ready()&&okData()?1:0);document.querySelectorAll('.steps i').forEach((x,i)=>x.classList.toggle('on',i<Math.max(1,n)))}
 
 async function start(){
-  try{data=await api('/public');if(!sel.date)sel.date=data.today;$('who').textContent=data.name+' · Turnos online';renderBooking()}
+  try{data=await api('/public');if(!sel.date)sel.date=data.today;$('who').textContent='Turnos online';renderBooking()}
   catch(e){$('app').innerHTML='<div class="group pad" style="margin-top:22px"><h2 class="h2">No se pudo cargar</h2><p class="sub" style="margin-top:6px">Revisá tu conexión y probá de nuevo en unos segundos.</p><button class="btn primary" onclick="start()">Reintentar</button></div>'}
 }
 function renderBooking(){
   $('app').innerHTML=`
-  <section class="hero"><div class="halo"><div class="mark">${data.logo?`<img src="/api/img/${data.logo}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`:ico('scissors')}</div></div><h1>${esc(data.name)}</h1><p>Reservá tu turno o sumate a la fila</p>${data.address?`<p class="small" style="margin-top:6px">${esc(data.address)}${data.phone?' · '+esc(data.phone):''}</p>`:''}${data.instagram?`<p class="small" style="margin-top:4px"><a href="https://instagram.com/${esc(data.instagram)}" target="_blank" rel="noopener">@${esc(data.instagram)}</a></p>`:''}</section>
+  <section class="hero"><div class="halo"><div class="mark"><img src="${data.logo?'/api/img/'+data.logo:'/logo.png'}" alt="Logo de ${esc(data.name)}" style="width:100%;height:100%;object-fit:cover;border-radius:50%"></div></div><h1>${esc(data.name)}</h1><p class="tag"><span class="pole"></span>Cortes adaptados a tu estilo<span class="pole"></span></p><p class="small" style="margin-top:4px">+10 años de experiencia · Desde 2018</p>${data.address?`<p class="small" style="margin-top:8px">${esc(data.address)}</p>`:''}<div class="contact">${data.phone?`<a href="https://wa.me/${esc(String(data.phone).replace(/\D/g,''))}" target="_blank" rel="noopener">${ico('wa')}<span>WhatsApp</span></a>`:''}${data.instagram?`<a href="https://instagram.com/${esc(data.instagram)}" target="_blank" rel="noopener"><span>Instagram</span></a>`:''}${data.address?`<a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(data.address)}" target="_blank" rel="noopener">${ico('pin')}<span>Cómo llegar</span></a>`:''}</div></section>
   ${(data.promos||[]).map(x=>`<div class="group pad" style="margin-top:14px;text-align:center"><b>${ico('tag')} ${esc(x.title)}</b><div class="sub">${x.kind==='2x1'?'2x1 · dos personas al precio de una':x.pct+'% off'} · hasta el ${esc(x.end.slice(8,10)+'/'+x.end.slice(5,7))}</div>${x.message?`<div class="small" style="margin-top:4px">${esc(x.message)}</div>`:''}</div>`).join('')}
   <div class="steps"><i class="on"></i><i></i><i></i><i></i></div>
   <section class="sec"><div class="seg" id="modes"><button data-m="turno"><b>Con turno</b><small>Elegís día y hora</small></button><button data-m="fila"><b>Sin turno</b><small>Orden de llegada · hoy</small></button></div></section>
@@ -71,7 +71,7 @@ const prodTotal=()=>prodSel().reduce((t,p)=>t+p.qty*p.price,0);
 function toggleEx(id,on){sel.extras=on?[...sel.extras,id]:sel.extras.filter(x=>x!==id);sel.time=null;refresh()}
 function drawWhen(){
   if(m==='fila'){
-    $('when').innerHTML=`<section class="sec"><div class="sechead"><b>Tu lugar</b><span>Hoy · orden de llegada</span></div><div class="group pad">${qi?`<b>${qi.ahead?`Hay ${qi.ahead} persona${qi.ahead===1?'':'s'} antes que vos`:'Serías el próximo'}</b>${qi.aviso?`<div class="note-warn">${ico('clock')}<span>Este barbero tiene un turno a las ${esc(qi.turno)}, así que puede que demores más. Podés anotarte igual.</span></div>`:''}`:'<p class="status">Elegí servicio y barbero para ver la fila.</p>'}</div></section>`;return}
+    $('when').innerHTML=`<section class="sec"><div class="sechead"><b>Tu lugar</b><span>Hoy · orden de llegada</span></div><div class="group pad">${qi?`<b>${qi.ahead?`Hay <span class="cnt" data-to="${qi.ahead}">${qi.ahead}</span> persona${qi.ahead===1?'':'s'} antes que vos`:'Serías el próximo'}</b>${qi.aviso?`<div class="note-warn">${ico('clock')}<span>Este barbero tiene un turno a las ${esc(qi.turno)}, así que puede que demores más. Podés anotarte igual.</span></div>`:''}`:'<p class="status">Elegí servicio y barbero para ver la fila.</p>'}</div></section>`;return}
   const t0=new Date(data.today+'T12:00:00'),days=Array.from({length:data.days||3},(_,i)=>i).map(i=>{const d=new Date(t0);d.setDate(d.getDate()+i);return d.toLocaleDateString('en-CA')});
   const dh=days.map((k,i)=>{const p=dateParts(k);return `<button class="${sel.date===k?'on':''}" onclick="pickDate('${k}')"><b>${i===0?'Hoy':i===1?'Mañana':i===2?'Pasado':p.day}</b><small>${p.day} ${p.num}</small></button>`}).join('');
   const mo=times.filter(t=>+t.slice(0,2)<13),ta=times.filter(t=>+t.slice(0,2)>=13),g=(n,a)=>a.length?`<div class="tgroup"><div class="small">${n}</div><div class="times">${a.map(t=>`<button class="time ${sel.time===t?'on':''}" onclick="pickTime('${t}')">${t}</button>`).join('')}</div></div>`:'';
@@ -112,7 +112,7 @@ async function book(){
 function showSuccess(r){
   window.scrollTo({top:0});const f=m==='fila';
   $('app').innerHTML=`<section class="center" style="margin-top:14px"><div class="okmark">${ico('check')}</div><h1 class="title" style="margin:6px 0 4px">${f?'¡Ya estás en la fila!':'¡Listo, '+esc(sel.name.split(/\s+/)[0])+'!'}</h1><p class="sub">${f?'Te atiende':'Tu turno quedó registrado con'} ${esc(r.staff)}.</p>
-  <div class="ticket"><div class="trow"><span>Servicio</span><b>${esc(r.service)}</b></div><div class="trow"><span>Barbero</span><b>${esc(r.staff)}</b></div>${f?`<div class="trow"><span>Tu lugar</span><b>N° ${r.position}</b></div>`:`<div class="trow"><span>Fecha</span><b>${esc(longDate(r.date))}</b></div><div class="trow"><span>Hora</span><b>${esc(r.time)}</b></div>`}${r.products&&r.products.length?`<div class="trow"><span>Productos</span><b>${r.products.map(p=>p.qty+' × '+esc(p.name)).join(', ')}</b></div>`:''}<div class="trow"><span>Total</span><b>${fmt(r.total||r.price||sel.service.price)}</b></div></div>
+  <div class="ticket"><div class="trow"><span>Servicio</span><b>${esc(r.service)}</b></div><div class="trow"><span>Barbero</span><b>${esc(r.staff)}</b></div>${f?`<div class="trow"><span>Tu lugar</span><b>N° <span class="cnt" data-to="${r.position}">${r.position}</span></b></div>`:`<div class="trow"><span>Fecha</span><b>${esc(longDate(r.date))}</b></div><div class="trow"><span>Hora</span><b>${esc(r.time)}</b></div>`}${r.products&&r.products.length?`<div class="trow"><span>Productos</span><b>${r.products.map(p=>p.qty+' × '+esc(p.name)).join(', ')}</b></div>`:''}<div class="trow"><span>Total</span><b>${fmt(r.total||r.price||sel.service.price)}</b></div></div>
   <div class="place"><div class="small">Guardá esta pantalla como comprobante.</div>${!f&&data.late&&data.late.mode!=='off'?`<div class="small" style="margin-top:8px">${data.late.mode==='fee'?'Si cancelás con menos de '+data.late.hours+(data.late.hours===1?' hora':' horas')+' de anticipación, se registra un cargo del '+data.late.pct+'% del servicio.':'Si no podés venir, cancelá desde Mis turnos con tiempo.'}</div>`:''}</div>
   <button class="btn primary" onclick="again()">Reservar otro</button></section>`
 }
