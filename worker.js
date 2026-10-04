@@ -92,6 +92,25 @@ async function init(db) {
     q.push(db.prepare("INSERT OR REPLACE INTO bp_settings(k,v) VALUES('svc_v3','1')"));
     await db.batch(q);
   }
+  if (!(await db.prepare("SELECT v FROM bp_settings WHERE k='svc_v4'").first())) { // Reparación única: falta "Corte de cabello", o servicios sin descripción / con foto de otro servicio (bases creadas con versiones anteriores)
+    const norm = x => String(x || '').trim().toLowerCase();
+    const MEDIA = {};
+    for (const [, name, , , desc, ph] of NEW_SERVICES) MEDIA[norm(name)] = [desc, ph];
+    Object.assign(MEDIA, { 'corte de cabello + barba': MEDIA['corte y barba'], 'corte de cabello + barba + lavado': MEDIA['corte, barba y lavado'], 'corte + barba + lavado': MEDIA['corte, barba y lavado'], 'corte de cabello + barba + afeitado tradicional + lavado': MEDIA['servicio completo'], 'corte + afeitado tradicional + lavado': MEDIA['servicio completo'], 'barba contemporánea': MEDIA['barba'] });
+    const q = [], rows = (await db.prepare('SELECT id,name,description,photo FROM bp_services').all()).results;
+    if (!rows.some(r => norm(r.name) === 'corte de cabello')) {
+      const [, name, price, dur, desc, ph] = NEW_SERVICES[0];
+      q.push(db.prepare('INSERT INTO bp_services(id,name,price,duration,description,photo,online,addon) VALUES(?,?,?,?,?,?,1,0)').bind(uid('s'), name, price, dur, desc, 'static-' + ph));
+    }
+    for (const r of rows) {
+      const m = MEDIA[norm(r.name)];
+      if (!m) continue;
+      const desc = r.description || m[0], photo = !r.photo || /^static-/.test(r.photo) ? 'static-' + m[1] : r.photo; // las fotos subidas por el dueño no se tocan
+      if (desc !== r.description || photo !== r.photo) q.push(db.prepare('UPDATE bp_services SET description=?,photo=? WHERE id=?').bind(desc, photo, r.id));
+    }
+    q.push(db.prepare("INSERT OR REPLACE INTO bp_settings(k,v) VALUES('svc_v4','1')"));
+    await db.batch(q);
+  }
   ready = true;
 }
 
