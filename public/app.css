@@ -475,7 +475,7 @@ html[data-role=client][data-theme=light]::before{
 /* ===== Fondo de la barbería (solo /reservar, tema oscuro): foto 9:16 fija ===== */
 .roomfx{display:none}
 html[data-theme=dark] body.room .roomfx{display:block;position:fixed;inset:0;z-index:-1;overflow:hidden;pointer-events:none;background:#000;contain:strict}
-body.room .roomfx img{position:absolute;left:50%;top:0;width:min(100vw,620px);height:100%;transform:translateX(-50%);object-fit:cover;object-position:center top;opacity:.13}
+body.room .roomfx img{position:absolute;left:50%;top:0;width:min(100vw,620px);height:100%;transform:translateX(-50%);object-fit:cover;object-position:center top;opacity:.12}
 /* en pantallas anchas los costados se funden con el negro */
 @media (min-width:700px){html[data-theme=dark] body.room .roomfx{-webkit-mask-image:linear-gradient(90deg,transparent calc(50% - 310px),#000 calc(50% - 230px),#000 calc(50% + 230px),transparent calc(50% + 310px));mask-image:linear-gradient(90deg,transparent calc(50% - 310px),#000 calc(50% - 230px),#000 calc(50% + 230px),transparent calc(50% + 310px))}}
 /* velo negro arriba y abajo + tinte dorado para que se funda con los círculos brillantes */
@@ -495,7 +495,7 @@ html[data-theme=dark] body.room{background:transparent}
 html[data-theme=dark] body.room::before{background:radial-gradient(60% 100% at 50% 0,rgba(212,175,90,.34),rgba(212,175,90,.08) 60%,transparent 78%)}
 html[data-theme=dark] body.room::after{background:radial-gradient(closest-side,rgba(212,175,90,.2),transparent)}
 
-/* Zoom general en celulares y tablets (como achicar el zoom del navegador). Escritorio ya tiene el suyo (75%) más arriba. Cambiá .85 por .8 o .9 a gusto. */
+/* Zoom general en celulares y tablets (como achicar el zoom del navegador). Escritorio ya tiene el suyo (75%) más arriba. Cambiá .75 por .8 o .85 a gusto. */
 @media not all and (min-width:700px) and (hover:hover) and (pointer:fine){html[data-role=client]{zoom:.75}body.room .roomfx img{width:100%}}
 
 /* Título de la reserva en dos líneas; "Barber Shop" un poco más oscuro */
@@ -503,3 +503,24 @@ html[data-theme=dark] body.room::after{background:radial-gradient(closest-side,r
 .hero h1 .l2{filter:brightness(.86)}
 /* "Barber Shop" en cursiva Playball (solo esa línea) */
 .hero h1 .l2{font-family:"Playball","Brush Script MT",cursive;font-weight:400;font-style:normal;letter-spacing:.02em;font-size:1.15em;line-height:1.2;padding:0 .12em .06em}
+
+/* Encabezado de la reserva (logo, título, datos y botones): tamaños equilibrados */
+.hero{padding:2px 0 0}
+.halo{width:164px;height:164px;margin:6px 0 14px}
+.hero .metarow{margin-top:8px;gap:9px;align-items:center}
+.hero .metarow .meta{white-space:normal;font-size:13px;line-height:1.45;text-align:center;text-wrap:balance;flex:0 1 auto;max-width:100%}
+.hero .metarow .pole{height:36px}
+.hero .contact{gap:8px;margin-top:14px}
+.hero .contact a{padding:9px 16px;font-size:14.5px}
+.hero .contact a svg.i{width:17px;height:17px}
+
+/* Título, datos y botones a todo el ancho (igual que las secciones de abajo) */
+.hero{align-items:stretch}
+.hero .halo{align-self:center}
+.hero h1{width:100%;text-align:center}
+.hero .metarow{width:100%}
+.hero .metarow .meta{flex:1 1 0;min-width:0;max-width:none;white-space:normal}
+.hero .meta .m1{display:block;white-space:nowrap}
+.hero .meta .m2{display:block;font-size:.92em;margin-top:2px}
+.hero .contact{width:100%}
+.hero .contact a{flex:1 1 auto;justify-content:center}
