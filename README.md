@@ -1,5 +1,7 @@
 # Barbería Pergamino
 
+**Fausto Furlano Buti Barber Shop** · Desde 2018 · +10 años de experiencia · *Cortes adaptados a tu estilo*. El logo está en `public/logo.png` (también es el ícono de la app instalada: `icon-192.png`, `icon-512.png`, `apple-touch-icon.png`). Si en Gestión → Ajustes se sube otro logo, ese tiene prioridad.
+
 Sistema de turnos y gestión para Fausto Furlano Buti Barber Shop (dueño + 4 barberos) sobre Cloudflare Workers + D1.
 
 - **Clientes:** `/reservar/` (turno) y `/reservar/?modo=fila` (sin turno, para el QR del local)
@@ -38,3 +40,9 @@ Mismo sistema que Melly Barber y BarberFlowBR: push cifrado con bandeja de salid
 **Cuándo:** turno nuevo, fila, cancelaciones, poco stock y un recordatorio 1 hora antes de cada turno (al barbero del turno, a los dueños y al cliente). El cron de `wrangler.toml` corre cada 10 min, crea los recordatorios y reintenta los avisos que hayan quedado pendientes. En iPhone hay que instalar la app primero.
 
 **Activar:** el equipo toca *Activar avisos* en Mi día (en Cuenta o Ajustes está el botón de prueba y el de desactivar). Los clientes lo hacen en `/reservar/mis-turnos.html`.
+
+## Fotos
+Las fotos de servicios y productos están en `public/img/*.webp` y se asignan una sola vez al primer arranque (ids `static-*`). Se reemplazan desde Gestión → Servicios / Productos. Los 3 productos (bálsamo, cera, gel) se crean **inactivos**: cargá precio y stock y activalos.
+
+## Animaciones
+Las de la página de reservas están en `public/fx.js` y al final de `public/app.css` (sección *Animaciones*). Se apagan solas si el celular tiene activado "reducir movimiento".

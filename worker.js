@@ -66,7 +66,17 @@ async function init(db) {
       q.push(db.prepare('INSERT INTO bp_services(id,name,price,duration) VALUES(?,?,?,?)').bind(id, name, price, dur));
     q.push(db.prepare("INSERT INTO bp_services(id,name,price,duration,addon) VALUES('s5','Tratamiento facial',18000,20,1)"));
     const day = [['08:00', '21:00']];
-    q.push(db.prepare('INSERT INTO bp_settings(k,v) VALUES(?,?),(?,?),(?,?),(?,?),(?,?),(?,?)').bind('name', 'Fausto Furlano Buti Barber Shop', 'commission', '50', 'schedule', JSON.stringify({ 1: day, 2: day, 3: day, 4: day, 5: day, 6: day }), 'address', 'Av. de Mayo 545, Pergamino', 'instagram', 'fausto_furlano', 'book_days', '3'));
+    q.push(db.prepare('INSERT INTO bp_settings(k,v) VALUES(?,?),(?,?),(?,?),(?,?),(?,?),(?,?),(?,?)').bind('name', 'Fausto Furlano Buti Barber Shop', 'commission', '50', 'schedule', JSON.stringify({ 1: day, 2: day, 3: day, 4: day, 5: day, 6: day }), 'address', 'Av. de Mayo 545, Pergamino', 'instagram', 'fausto_furlano', 'phone', '+54 9 2477 581140', 'book_days', '3'));
+    await db.batch(q);
+  }
+  if (!(await db.prepare("SELECT v FROM bp_settings WHERE k='seed_media'").first())) { // Fotos de servicios y productos de Fausto (una sola vez)
+    const q = [];
+    for (const [id, f] of [['s1', 'barba'], ['s2', 'corte'], ['s3', 'lavado'], ['s4', 'afeitado'], ['s5', 'facial']])
+      q.push(db.prepare("UPDATE bp_services SET photo=? WHERE id=? AND (photo IS NULL OR photo='')").bind('static-' + f, id));
+    if (!(await db.prepare('SELECT COUNT(*) n FROM bp_products').first()).n)
+      for (const [id, name, desc, f] of [['pr_balsamo', 'Bálsamo para barba', 'Hidratación profunda y fijación ligera · 100 ml', 'balsamo'], ['pr_cera', 'Cera pomada mate', 'Fijación fuerte, acabado natural · 100 ml', 'cera'], ['pr_gel', 'Gel estilizador', 'Fijación extra fuerte, efecto mojado · 100 ml', 'gel']]) // Inactivos hasta cargar precio y stock
+        q.push(db.prepare('INSERT INTO bp_products(id,name,description,price,stock,track,low,comm_pct,photo,active) VALUES(?,?,?,?,?,?,?,?,?,?)').bind(id, name, desc, 0, 0, 1, 3, 0, 'static-' + f, 0));
+    q.push(db.prepare("INSERT OR REPLACE INTO bp_settings(k,v) VALUES('seed_media','1')"));
     await db.batch(q);
   }
   ready = true;
@@ -345,7 +355,7 @@ async function flushPush(env) {
     if (Number(claim?.meta?.changes || 0) !== 1) continue;
     try {
       const body = n.kind === 'resumen' ? n.body.replace(/\n/g, ' · ').slice(0, 140) : n.body;
-      sent += await pushToRef(env, db, 'staff', n.staff_id, { title: n.title || PUSH_TITLE[n.kind] || 'Barbería', body, url: '/gestion/', tag: n.id }, n.kind === 'reminder' ? 1800 : 86400);
+      sent += await pushToRef(env, db, 'staff', n.staff_id, { title: n.title || PUSH_TITLE[n.kind] || 'Fausto Furlano Buti Barber Shop', body, url: '/gestion/', tag: n.id }, n.kind === 'reminder' ? 1800 : 86400);
     } catch (e) { console.error('PUSH_STAFF_ERROR', String(e?.message || e)); }
     await db.prepare('UPDATE bp_notif SET pushed=1 WHERE id=?').bind(n.id).run();
   }
@@ -366,6 +376,7 @@ async function route(req, db, u, p, env, ctx) {
     return J(200, { name: st.name, address: st.address || '', phone: st.phone || '', instagram: st.instagram || '', logo: st.logo || null, late: { mode: ['off', 'fee'].includes(st.late_mode) ? st.late_mode : 'warn', hours: +st.late_hours || 1, pct: +st.late_pct || 50 }, days: +st.book_days || 3, promos: pr, services: sv.results.filter(s => s.online && !s.addon).map(s => withPromo(pr, s)), addons: sv.results.filter(s => s.online && s.addon), products: prods, staff: ss.results, today: n.date });
   }
   if (p.startsWith('/api/img/')) {
+    if (/^static-[a-z]+$/.test(p.slice(9))) return Response.redirect(u.origin + '/img/' + p.slice(16) + '.webp', 302);
     const r = await db.prepare('SELECT mime,data FROM bp_images WHERE id=?').bind(p.slice(9)).first();
     if (!r) return new Response('No encontrada', { status: 404 });
     return new Response(Uint8Array.from(atob(r.data), c => c.charCodeAt(0)), { headers: { 'content-type': r.mime, 'cache-control': 'public, max-age=31536000, immutable' } });
