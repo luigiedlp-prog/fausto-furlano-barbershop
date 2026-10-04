@@ -472,15 +472,12 @@ html[data-role=client][data-theme=light]::before{
     url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .54 0 0 0 0 .4 0 0 0 0 .1 0 0 0 .13 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
   opacity:1}
 
-/* ===== Fondo de la barbería (solo /reservar, tema oscuro) ===== */
+/* ===== Fondo de la barbería (solo /reservar, tema oscuro): foto 9:16 fija ===== */
 .roomfx{display:none}
 html[data-theme=dark] body.room .roomfx{display:block;position:fixed;inset:0;z-index:-1;overflow:hidden;pointer-events:none;background:#000;contain:strict}
-body.room .roomfx img{position:absolute;left:50%;top:0;width:min(100vw,620px);min-height:100vh;min-height:100dvh;height:auto;object-fit:cover;object-position:top;opacity:.34;transform:translate3d(-50%,0,0);will-change:transform;backface-visibility:hidden}
-/* en pantallas anchas los costados se funden con el negro (la máscara va en el contenedor fijo, no en la foto que se mueve) */
+body.room .roomfx img{position:absolute;left:50%;top:0;width:min(100vw,620px);height:100%;transform:translateX(-50%);object-fit:cover;object-position:center top;opacity:.36}
+/* en pantallas anchas los costados se funden con el negro */
 @media (min-width:700px){html[data-theme=dark] body.room .roomfx{-webkit-mask-image:linear-gradient(90deg,transparent calc(50% - 310px),#000 calc(50% - 230px),#000 calc(50% + 230px),transparent calc(50% + 310px));mask-image:linear-gradient(90deg,transparent calc(50% - 310px),#000 calc(50% - 230px),#000 calc(50% + 230px),transparent calc(50% + 310px))}}
-/* con scroll nativo: la foto baja sola, pegada al scroll de la página */
-@keyframes roompan{from{transform:translate3d(-50%,0,0)}to{transform:translate3d(-50%,calc(var(--pan,0px)*-1),0)}}
-@supports (animation-timeline:scroll()){html.roomscroll body.room .roomfx img{animation:roompan linear both;animation-timeline:scroll(root block)}}
 /* velo negro arriba y abajo + tinte dorado para que se funda con los círculos brillantes */
 html[data-theme=dark] body.room .roomfx::after{content:"";position:absolute;inset:0;background:
   radial-gradient(70% 38% at 50% 0,rgba(212,175,90,.16),transparent 72%),
