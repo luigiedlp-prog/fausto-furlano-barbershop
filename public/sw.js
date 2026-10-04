@@ -19,4 +19,4 @@ self.addEventListener('notificationclick',e=>{
   })());
 });
 self.addEventListener('fetch',e=>{const u=new URL(e.request.url);if(e.request.method!=='GET'||u.pathname.startsWith('/api/'))return;
-  e.respondWith(fetch(e.request).then(r=>{if(r.ok&&u.origin===location.origin){const c=r.clone();caches.open('bp1').then(k=>k.put(e.request,c))}return r}).catch(()=>caches.match(e.request)))});
+  e.respondWith(fetch(e.request).then(r=>{if(r.ok&&u.origin===location.origin){const c=r.clone();caches.open('bp2').then(k=>k.put(e.request,c))}return r}).catch(()=>caches.match(e.request)))});
