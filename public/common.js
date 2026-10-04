@@ -56,7 +56,7 @@ W.initials=n=>String(n||'').trim().split(/\s+/).filter(Boolean).map(x=>x[0]).sli
 (function(){const r=document.documentElement,m=document.querySelector('meta[name=theme-color]');
  const paint=x=>{r.dataset.theme=x;if(m)m.content=x==='dark'?'#0c0c0e':'#f6f3ec';const b=document.getElementById('themeBtn');if(b)b.textContent=x==='dark'?'☀':'☾'};
  W.toggleTheme=()=>{const x=r.dataset.theme==='dark'?'light':'dark';try{localStorage.setItem('bp_theme',x)}catch(e){}paint(x)};
- const mk=()=>{if(document.getElementById('themeBtn'))return;const b=document.createElement('button');b.id='themeBtn';b.className='glassbtn';b.setAttribute('aria-label','Cambiar entre modo claro y oscuro');b.onclick=W.toggleTheme;const bar=document.querySelector('.bar');if(bar)bar.appendChild(b);else{b.style.cssText='position:fixed;top:12px;right:12px;z-index:9';document.body.appendChild(b)}paint(r.dataset.theme||'light')};
+ const mk=()=>{if(document.getElementById('themeBtn'))return;const b=document.createElement('button');b.id='themeBtn';b.className='glassbtn';b.setAttribute('aria-label','Cambiar entre modo claro y oscuro');b.onclick=W.toggleTheme;const bar=document.querySelector('.bar');if(bar)bar.appendChild(b);else{b.style.cssText='position:fixed;top:12px;right:12px;z-index:9';document.body.appendChild(b)}paint(r.dataset.theme||'dark')};
  document.readyState==='loading'?document.addEventListener('DOMContentLoaded',mk):mk()})();
 /* Avisos push (mismo sistema que Melly Barber y BarberFlowBR; necesitan los secrets VAPID en Cloudflare) */
 (function(){

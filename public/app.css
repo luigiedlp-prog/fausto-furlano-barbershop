@@ -370,8 +370,7 @@ html[data-theme=dark] .contact a svg.i{color:var(--gold)}
 
 /* ===== Animaciones (reservas) ===== */
 /* 1) Poste de barbero girando */
-.hero .tag{display:flex;align-items:center;justify-content:center}
-.pole{display:inline-block;flex:none;width:9px;height:28px;margin:0 11px;border-radius:5px;background:repeating-linear-gradient(135deg,#d62d2d 0 5.657px,#fff 5.657px 11.314px,#2a5bd7 11.314px 16.97px);background-size:24px 24px;animation:polespin 1.1s linear infinite;box-shadow:inset 0 0 0 1px rgba(0,0,0,.4),inset 2px 0 2px rgba(255,255,255,.4),inset -2px 0 3px rgba(0,0,0,.35),0 0 8px rgba(255,255,255,.12)}
+.pole{display:inline-block;flex:none;width:9px;height:28px;margin:0;border-radius:5px;background:repeating-linear-gradient(135deg,#d62d2d 0 5.657px,#fff 5.657px 11.314px,#2a5bd7 11.314px 16.97px);background-size:24px 24px;animation:polespin 1.1s linear infinite;box-shadow:inset 0 0 0 1px rgba(0,0,0,.4),inset 2px 0 2px rgba(255,255,255,.4),inset -2px 0 3px rgba(0,0,0,.35),0 0 8px rgba(255,255,255,.12)}
 @keyframes polespin{to{background-position:0 24px}}
 /* 2) Logo: entrada y destello periódico */
 .halo .mark{position:relative;overflow:hidden}
@@ -412,3 +411,20 @@ html[data-theme=dark] .contact a svg.i{color:var(--gold)}
 /* 7) Botones de contacto con rebote */
 .contact a{transition:transform .35s cubic-bezier(.34,1.8,.5,1)}.contact a:active{transform:scale(.92)}
 .contact a{animation:rise2 .5s both}.contact a:nth-child(1){animation-delay:.7s}.contact a:nth-child(2){animation-delay:.8s}.contact a:nth-child(3){animation-delay:.9s}
+
+/* Encabezado en una sola línea */
+.hero .meta{white-space:nowrap;max-width:100%;font-size:clamp(7px,2.3vw,12px);letter-spacing:0;text-transform:none;color:var(--sub);margin-top:8px;overflow:visible}
+.hero .contact{margin-top:10px}
+/* Postes a los costados del logo */
+.halo .pole{position:absolute;top:50%;margin-top:-26px;height:52px;width:11px;z-index:2}
+.halo .pole.l{left:-46px}.halo .pole.r{right:-46px}
+/* Fotos más grandes en servicios y productos */
+.svc .ic.ph{width:92px;height:92px;border-radius:16px;overflow:hidden;background:#000}
+.svc .ic.ph img{width:100%;height:100%;object-fit:cover;border-radius:0}
+.svc .ic.ph,.svc.on .ic.ph{box-shadow:none}
+.svc.on .ic.ph{outline:2px solid var(--gold,#d4af5a);outline-offset:-2px}
+.svc:has(.ic.ph){align-items:center;padding-top:12px;padding-bottom:12px}
+.svc.on .ic.ph img{transform:scale(1.06)}
+/* Descripción de servicios: máximo 2 líneas */
+.svc .main small+small{display:-webkit-box!important;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;font-size:13px;line-height:1.3;margin-top:2px}
+.svc .pr{white-space:nowrap}
