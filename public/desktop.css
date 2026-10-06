@@ -1,0 +1,44 @@
+/* ===== Escritorio (PC y pantallas anchas, desde 1024px) =====
+   Se carga al final en /reservar/, mis-turnos y /gestion/. En celulares y tablets chicas no cambia nada.
+   - Reserva: formulario a la izquierda y resumen fijo a la derecha.
+   - Gestión: menú lateral en lugar de la barra de abajo, contenido centrado y ventanas en el medio. */
+@media (min-width:1024px){
+  /* Con layout propio de escritorio se saca el zoom del 75% (solo servía para la columna angosta) */
+  html{zoom:1}
+
+  /* ---------- Reserva ---------- */
+  html[data-role=client] .wrap{max-width:640px}
+  html[data-role=client] body.room .wrap{max-width:1120px;padding-left:32px;padding-right:32px}
+  #app:has(>#summary){display:grid;grid-template-columns:minmax(0,1fr) 390px;column-gap:40px;row-gap:0;align-items:start}
+  #app:has(>#summary)>*{grid-column:1;min-width:0}
+  #app:has(>#summary)>#summary{grid-column:2;grid-row:1 / span 40;align-self:stretch}
+  #summary .dock{position:sticky;top:24px;bottom:auto;margin-top:26px}
+  /* Pantalla de "¡Listo!" (comprobante): sin el resumen a la derecha, queda angosta y centrada en vez de estirarse a todo el ancho */
+  #app:not(:has(>#summary))>.center{max-width:560px;margin-left:auto;margin-right:auto}
+  /* la foto de fondo ocupa toda la pantalla (antes era una franja de celular) */
+  html[data-theme=dark] body.room .roomfx{-webkit-mask-image:none;mask-image:none}
+  html[data-theme=dark] body.room .roomfx img{width:100%}
+
+  /* ---------- Gestión ---------- */
+  html[data-role=admin] body:has(#tabbar:not(.hidden)){padding-left:232px}
+  html[data-role=admin] .wrap{max-width:980px;padding-bottom:48px}
+  html[data-role=admin] .stats{grid-template-columns:repeat(auto-fit,minmax(170px,1fr))}
+  html[data-role=admin] .tabbar{left:0;right:auto;top:0;bottom:0;width:232px;max-width:none;margin:0;padding:24px 14px;border-radius:0;border-width:0 1px 0 0;box-shadow:none;overflow-y:auto}
+  html[data-role=admin] .tabbar .in{display:flex;flex-direction:column;gap:4px;max-width:none;margin:0}
+  html[data-role=admin] .tab{flex-direction:row;justify-content:flex-start;gap:12px;padding:12px 14px;font-size:15px;border-radius:14px;text-align:left}
+  html[data-role=admin] .tab svg.i{width:22px;height:22px;flex:none}
+  html[data-role=admin] .tab:focus-visible{outline:2px solid var(--gold,#d4af5a);outline-offset:2px}
+  /* Aviso de PIN de ejemplo: separado del encabezado y del título */
+  html[data-role=admin] #app>.group.pad:first-child:has(+ .title){margin-top:14px;margin-bottom:22px!important}
+  html[data-role=admin] .fab{right:36px;bottom:36px}
+  html[data-role=admin] .toast{bottom:32px}
+
+  /* Ventanas emergentes: en el centro de la pantalla, no pegadas abajo */
+  .overlay{align-items:center;padding:24px}
+  .sheet{max-width:560px;border-radius:24px;border-bottom:1px solid var(--line2);padding-top:22px;padding-bottom:24px}
+  .sheet .handle{display:none}
+}
+@media (min-width:1024px) and (hover:hover){
+  html[data-role=admin] .tab:not(.active):hover{background:rgba(128,128,128,.12);color:inherit}
+  button,.btn,.svc,.time{cursor:pointer}
+}
