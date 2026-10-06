@@ -40,13 +40,19 @@
   html[data-role=admin] .bar{justify-content:flex-end}
   html[data-role=admin] .bar .who{margin-right:auto}
   /* Botones grandes de pantalla completa: en PC no se estiran a 900px */
-  html[data-role=admin] #app>.btn{display:inline-flex;width:auto!important;min-width:300px;padding:0 32px}
+  html[data-role=admin] #app>.btn{display:inline-flex;width:auto!important;min-width:0;padding:0 32px}
   html[data-role=admin] #app>.group.pad:first-child:has(+ .title) .btn{display:inline-flex;width:auto;min-width:200px;min-height:44px;padding:0 28px;font-size:15px}
   /* Turno: "Recordarle por WhatsApp" y "Mover o editar" lado a lado, con el texto centrado y sin subrayado (el enlace y el botón se veían distintos) */
   html[data-role=admin] .ev{display:grid;grid-template-columns:1fr 1fr;column-gap:10px}
   html[data-role=admin] .ev>*{grid-column:1/-1}
   html[data-role=admin] .ev>a.btn,html[data-role=admin] .ev>a.btn+button.btn{grid-column:auto}
   html[data-role=admin] .ev>.btn{display:flex!important;align-items:center;justify-content:center;text-align:center;text-decoration:none;width:auto!important;min-height:46px;font-size:16px}
+
+  /* Formularios emergentes: casilla de "Adicionales" alineada con su texto y más aire antes del botón de guardar */
+  .sheet .field label.hhead{display:flex;align-items:center;gap:10px;margin:2px 4px 8px;color:var(--text)}
+  .sheet .hhead input{width:18px;height:18px;margin:0;flex:none;accent-color:var(--gold,#d4af5a)}
+  .sheet .hhead span{font-size:15px;color:var(--text)}
+  .sheet .btn.primary{margin-top:24px}
 
   /* Ventanas emergentes: en el centro de la pantalla, no pegadas abajo */
   .overlay{align-items:center;padding:24px}
@@ -56,4 +62,13 @@
 @media (min-width:1024px) and (hover:hover){
   html[data-role=admin] .tab:not(.active):hover{background:rgba(128,128,128,.12);color:inherit}
   button,.btn,.svc,.time{cursor:pointer}
+}
+@media (min-width:1280px){
+  /* Gestión: listas largas en dos columnas (turnos de la agenda y barberos de Equipo) para no recorrer una columna interminable */
+  html[data-role=admin] *:has(>.appt){display:grid;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:16px;align-items:start}
+  html[data-role=admin] *:has(>.appt)>:not(.appt){grid-column:1/-1}
+  html[data-role=admin] .appt .ev>.btn{font-size:14.5px;padding:0 8px;white-space:nowrap}
+  html[data-role=admin] #app:has(>.sec .hrow){display:grid;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:20px;align-items:start}
+  html[data-role=admin] #app:has(>.sec .hrow)>*{grid-column:1/-1}
+  html[data-role=admin] #app:has(>.sec .hrow)>.sec{grid-column:auto}
 }
