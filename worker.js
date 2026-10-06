@@ -218,7 +218,7 @@ const itemStmts = (db, apptId, rows) => rows.map(r => db.prepare('INSERT INTO bp
 const giveBack = async (db, rows) => { for (const r of rows) if (r.held) await db.prepare('UPDATE bp_products SET stock=stock+? WHERE id=?').bind(r.qty, r.product_id).run(); };
 const lowNotify = (ctx, env, db, low) => { for (const l of low) ctx.waitUntil(notifyStaff(env, db, null, `Quedan ${l.left} de ${l.name}`, 'stock')); };
 // Compara lo pedido contra lo que el turno ya tenía: reserva (o devuelve) solo la diferencia, y se deshace todo si algo falla.
-async function planItems(db, wanted, old) {
+async function planItems(db, wanted, old, counter = false) {
   const list = [], seen = new Set();
   for (const x of Array.isArray(wanted) ? wanted : []) {
     const id = String((x && x.id) || ''), q = Math.round(+(x && x.qty) || 0);
@@ -234,7 +234,8 @@ async function planItems(db, wanted, old) {
   try {
     for (const { id, q } of list) {
       const p = prods[id], o = oldBy[id];
-      if (!p || (!p.active && !o)) throw err(400, 'Producto inválido');
+      if (!p || (!p.active && !o && !counter)) throw err(400, 'Producto inválido');
+      if (counter && !o && !(p.price > 0)) throw err(400, `${p.name}: todavía no tiene precio. Cargalo en Ajustes → Productos`);
       const held = o && o.held ? o.qty : 0, need = p.track ? q - held : 0;
       if (need > 0) {
         const r = await db.prepare('UPDATE bp_products SET stock=stock-? WHERE id=? AND stock>=?').bind(need, id, need).run();
@@ -555,7 +556,7 @@ async function route(req, db, u, p, env, ctx) {
   if (p === '/api/sale' && req.method === 'POST') {
     const sf = me.role === 'owner' && B.staff ? await staffOk(db, B.staff) : { id: me.id, name: me.name }, pay = B.pay === 'transferencia' ? 'transferencia' : 'efectivo';
     if (!B.force && (await db.prepare("SELECT id FROM bp_appts WHERE kind='venta' AND status='done' AND staff_id=? AND created_at>=datetime('now','-10 seconds')").bind(sf.id).first())) throw Object.assign(err(409, 'Acabás de registrar otra venta hace unos segundos.'), { soft: true });
-    const pl = await planItems(db, B.products, []);
+    const pl = await planItems(db, B.products, [], true);
     if (!pl.rows.length) throw err(400, 'Elegí al menos un producto');
     const id = uid('a'), tot = prodSum(pl.rows), comm = pl.rows.reduce((t, r) => t + Math.round(r.qty * r.price * r.comm_pct / 100), 0);
     try {
@@ -951,7 +952,7 @@ async function route(req, db, u, p, env, ctx) {
     }
     const pend = (await db.prepare("SELECT COUNT(*) n FROM bp_appts WHERE staff_id=? AND status='pending' AND date>=?").bind(s.id, n.date).first()).n;
     if (pend) throw err(409, `${s.name} tiene ${pend} turno${pend === 1 ? '' : 's'} pendiente${pend === 1 ? '' : 's'}. Movelos o cancelalos antes de darlo de baja.`);
-    await db.batch([db.prepare('UPDATE bp_staff SET active=0 WHERE id=?').bind(s.id), db.prepare('DELETE FROM bp_sessions WHERE staff_id=?').bind(s.id), db.prepare('DELETE FROM bp_push WHERE staff_id=?').bind(s.id)]);
+    await db.batch([db.prepare('UPDATE bp_staff SET active=0 WHERE id=?').bind(s.id), db.prepare('DELETE FROM bp_sessions WHERE staff_id=?').bind(s.id), db.prepare("DELETE FROM bp_subs WHERE role='staff' AND ref=?").bind(s.id)]);
     return J(200, { ok: true });
   }
   if (p === '/api/admin/staff-pin' && req.method === 'POST') {
