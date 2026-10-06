@@ -1,5 +1,5 @@
 /* Barbería Pergamino · Gestión (barberos y dueños). Estilos en /app.css y /gestion/gestion.css */
-let M=null,A=null,tab='dia',q='',fl='all',AG=null,agDate=null,agStaff='all',AFF=[];
+let M=null,A=null,fper='month',expBusy=false,tab='dia',q='',fl='all',AG=null,agDate=null,agStaff='all',AFF=[];
 const AR='America/Argentina/Buenos_Aires';
 const hh=s=>s?new Date(s.replace(' ','T')+'Z').toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit',hour12:false,timeZone:AR}):'';
 const dm=d=>d?d.slice(8)+'/'+d.slice(5,7):'—';
@@ -115,17 +115,18 @@ function cliSheet(id){
 
 /* ---- Finanzas y configuración ---- */
 function vFin(){
-  const m=A.month;
-  return `<h1 class="title">Finanzas</h1><section class="today"><div class="d">Este mes · ganancia neta</div><div class="big">${fmt(m.net)}</div></section>
+  const k=fper,m=A.fin[k],lab={day:'Hoy',week:'Esta semana',month:'Este mes'}[k],rows=A.expenses.filter(e=>e.date>=m.from&&e.date<=m.to);
+  return `<h1 class="title">Finanzas</h1><section class="today"><div class="d">${lab} · ganancia neta</div><div class="big">${fmt(m.net)}</div></section>
+  <div class="seg" style="margin-top:14px">${[['day','Día'],['week','Semana'],['month','Mes']].map(([p,l])=>`<button class="${k===p?'on':''}" onclick="fper='${p}';draw()">${l}</button>`).join('')}</div>
   <button class="btn primary" style="width:100%;margin-top:14px" onclick="sumImage()">Generar resumen del día</button>
   <div class="group pad" style="margin-top:14px"><div class="hrow"><span>Ingresos${m.products||m.fees?`<small>${[m.products?'incluye '+fmt(m.products)+' de productos':'',m.fees?fmt(m.fees)+' de cancelaciones cobradas':''].filter(Boolean).join(' · ')}</small>`:''}</span><b>${fmt(m.income)}</b></div><div class="hrow"><span>Comisiones a pagar</span><b>− ${fmt(m.commissions)}</b></div><div class="hrow"><span>Gastos</span><b>− ${fmt(m.expenses)}</b></div></div>
   ${sec('Últimos 14 días','',`<div class="group pad">${chart14()}</div>`)}
-  ${m.byPay&&(m.byPay.efectivo||m.byPay.transferencia)?sec('Por medio de pago','Este mes',`<div class="group pad">${[['efectivo','Efectivo'],['transferencia','Transferencia']].map(([k,l])=>{const tot=m.byPay.efectivo+m.byPay.transferencia;return `<div class="hrow"><span>${l}<small>${tot?Math.round(m.byPay[k]*100/tot):0}%</small></span><b>${fmt(m.byPay[k])}</b></div>`}).join('')}</div>`):''}
-  ${A.sales&&A.sales.length?sec('Productos vendidos','Este mes',`<div class="group pad">${A.sales.map(s=>`<div class="hrow"><span>${esc(s.name)}<small>${s.u} unidad${s.u===1?'':'es'}</small></span><b>${fmt(s.t)}</b></div>`).join('')}</div>`):''}
+  ${m.byPay&&(m.byPay.efectivo||m.byPay.transferencia)?sec('Por medio de pago',lab,`<div class="group pad">${[['efectivo','Efectivo'],['transferencia','Transferencia']].map(([k,l])=>{const tot=m.byPay.efectivo+m.byPay.transferencia;return `<div class="hrow"><span>${l}<small>${tot?Math.round(m.byPay[k]*100/tot):0}%</small></span><b>${fmt(m.byPay[k])}</b></div>`}).join('')}</div>`):''}
+  ${m.sales&&m.sales.length?sec('Productos vendidos',lab,`<div class="group pad">${m.sales.map(s=>`<div class="hrow"><span>${esc(s.name)}<small>${s.u} unidad${s.u===1?'':'es'}</small></span><b>${fmt(s.t)}</b></div>`).join('')}</div>`):''}
   ${sec('Cierre de caja','Efectivo de hoy',`<div class="group pad"><div class="hrow"><span>Cobrado en efectivo hoy</span><b>${fmt(A.cash)}</b></div><div class="field"><label>Contado en caja</label><input id="cc" type="number" inputmode="numeric" oninput="const d=+this.value-A.cash;$('cd').textContent=this.value===''?'':d===0?'Caja justa':(d>0?'Sobran ':'Faltan ')+fmt(Math.abs(d))"></div><p class="hint" id="cd" style="font-weight:600"></p></div>`)}
-  ${sec('Cargar un gasto','',`<div class="group pad"><div class="field" style="margin-top:0"><label>Concepto</label><input id="gc" placeholder="Ej.: alquiler, insumos"></div><div class="field"><label>Categoría</label><select id="gk">${['Alquiler','Insumos','Servicios','Publicidad','Sueldos','Otros'].map(c=>`<option>${c}</option>`).join('')}</select></div><div class="field"><label>Monto</label><input id="gm" type="number" inputmode="numeric"></div><p class="err" id="ge"></p><button class="btn primary" onclick="addExp()">Guardar gasto</button></div>`)}
-  ${Object.keys(m.byCat||{}).length?sec('Gastos por categoría','Este mes',`<div class="group pad">${Object.entries(m.byCat).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`<div class="hrow"><span>${esc(k)}<small>${m.expenses?Math.round(v*100/m.expenses):0}%</small></span><b>${fmt(v)}</b></div>`).join('')}</div>`):''}
-  ${A.expenses.length?sec('Gastos del mes','',`<div class="group pad">${A.expenses.map(e=>`<div class="hrow"><span>${esc(e.concept)}<small>${esc(e.category||'Otros')} · ${esc(e.date)}</small></span><b>${fmt(e.amount)}</b></div>`).join('')}</div>`):''}
+  ${sec('Cargar un gasto','',`<div class="group pad"><div class="field" style="margin-top:0"><label>Concepto</label><input id="gc" placeholder="Ej.: alquiler, insumos"></div><div class="field"><label>Categoría</label><select id="gk">${['Alquiler','Insumos','Servicios','Publicidad','Sueldos','Otros'].map(c=>`<option>${c}</option>`).join('')}</select></div><div class="field"><label>Monto</label><input id="gm" type="number" inputmode="numeric"></div><div class="field"><label>Fecha</label><input id="gd" type="date" value="${A.today}" max="${A.today}"></div><p class="err" id="ge"></p><button class="btn primary" id="gb" onclick="addExp()">Guardar gasto</button></div>`)}
+  ${Object.keys(m.byCat||{}).length?sec('Gastos por categoría',lab,`<div class="group pad">${Object.entries(m.byCat).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`<div class="hrow"><span>${esc(k)}<small>${m.expenses?Math.round(v*100/m.expenses):0}%</small></span><b>${fmt(v)}</b></div>`).join('')}</div>`):''}
+  ${rows.length?sec('Gastos · '+lab.toLowerCase(),'Tocá uno para editar o borrar',`<div class="group pad">${rows.map(e=>`<div class="hrow" style="cursor:pointer" onclick="expSheet('${e.id}')"><span>${esc(e.concept)}<small>${esc(e.category||'Otros')} · ${esc(e.date)}</small></span><b>${fmt(e.amount)}</b></div>`).join('')}</div>`):''}
 `;
 }
 const svNames=p=>p.service_id?p.service_id.split(',').map(i=>(M.services.find(s=>s.id===i)||{}).name).filter(Boolean).join(' · '):'—';
@@ -167,7 +168,21 @@ function promoSheet(id){const p=id?A.promos.find(x=>x.id===id):null,ck=new Set(p
 async function savePromo(id){try{await post('/admin/promo',{id:id||null,title:$('pn').value,kind:$('pk').value,pct:$('pp').value,services:[...document.querySelectorAll('.pv:checked')].map(x=>x.value),start:$('pd').value,end:$('ph').value,message:$('pm').value});closeSheet();await load();draw();toast('Promoción guardada')}catch(e){$('pe2').textContent=e.message}}
 async function togPromo(id){await post('/admin/promo/toggle',{id});await load();draw()}
 async function delPromo(id){if(!await confirmD('¿Borrar esta promoción?','Borrar',true))return;await post('/admin/promo/del',{id});await load();draw()}
-async function addExp(){try{await post('/admin/expense',{concept:$('gc').value,category:$('gk').value,amount:$('gm').value});await load();draw();toast('Gasto guardado')}catch(e){$('ge').textContent=e.message}}
+const EXPCATS=['Alquiler','Insumos','Servicios','Publicidad','Sueldos','Otros'];
+async function addExp(force){
+  if(expBusy)return;
+  const c=$('gc').value.trim(),a=$('gm').value,k=$('gk').value,d=$('gd').value||A.today;
+  $('ge').textContent='';
+  if(!c||!(+a>0)){$('ge').textContent='Completá concepto y monto';return}
+  if(force!==true&&!await confirmD(`¿Agregar "${c}" por ${fmt(a)} (${k}) el ${dm(d)}?`,'Agregar gasto'))return;
+  expBusy=true;const b=$('gb');if(b)b.disabled=true;
+  try{await post('/admin/expense',{concept:c,category:k,amount:a,date:d,force:force===true});await load();draw();toast('Gasto guardado')}
+  catch(e){if(e.data&&e.data.soft){expBusy=false;if(await confirmD(e.message+' ¿Cargar otro igual?','Cargar igual'))await addExp(true)}else{const x=$('ge');if(x)x.textContent=e.message}}
+  finally{expBusy=false;const b2=$('gb');if(b2)b2.disabled=false}
+}
+function expSheet(id){const e=A.expenses.find(x=>x.id===id);if(!e)return;sheet(`<h2>Editar gasto</h2><div class="field"><label>Concepto</label><input id="xc" value="${esc(e.concept)}"></div><div class="field"><label>Categoría</label><select id="xk">${EXPCATS.map(c=>`<option ${c===(e.category||'Otros')?'selected':''}>${c}</option>`).join('')}</select></div><div class="field"><label>Monto</label><input id="xm" type="number" inputmode="numeric" value="${e.amount}"></div><div class="field"><label>Fecha</label><input id="xd" type="date" value="${e.date}" max="${A.today}"></div><p class="err" id="xe"></p><button class="btn primary" onclick="saveExp('${id}')">Guardar cambios</button><button class="btn danger" style="margin-top:10px;width:100%" onclick="delExp('${id}')">Borrar gasto</button>`)}
+async function saveExp(id){try{await post('/admin/expense',{id,concept:$('xc').value,category:$('xk').value,amount:$('xm').value,date:$('xd').value});closeSheet();await load();draw();toast('Gasto actualizado')}catch(e){$('xe').textContent=e.message}}
+async function delExp(id){if(!await confirmD('¿Borrar este gasto? No se puede deshacer.','Borrar',true))return;try{await post('/admin/expense/del',{id});closeSheet();await load();draw();toast('Gasto borrado')}catch(e){alertD(e.message)}}
 
 /* ---- Agenda: turnos manuales, mover/editar y bloqueos ---- */
 const addDay=(d,n)=>{const x=new Date(d+'T12:00:00Z');x.setUTCDate(x.getUTCDate()+n);return x.toISOString().slice(0,10)};
