@@ -46,7 +46,7 @@ function ev(a,ag){
   ${a.status==='pending'||a.status==='unrecorded'?`<div class="evacts"><button class="go" onclick="doneSheet('${a.id}')">${ico('check')} Hecho</button><button class="wn" onclick="setSt('${a.id}','no_show')">${ico('noshow')} No asistió</button><button class="bad" onclick="setSt('${a.id}','cancelled')">${ico('x')} Cancelar</button></div>`:''}</div></div>`;
 }
 function vDia(){
-  const t=M.day.filter(a=>a.kind==='turno'&&a.status==='pending').sort((a,b)=>a.time.localeCompare(b.time)),f=M.day.filter(a=>a.kind==='fila'&&a.status==='pending'),c=M.day.filter(a=>a.status!=='pending'),n=t[0]||f[0];
+  const t=M.day.filter(a=>a.kind==='turno'&&a.status==='pending').sort((a,b)=>a.time.localeCompare(b.time)),f=M.day.filter(a=>a.kind==='fila'&&a.status==='pending'),c=M.day.filter(a=>a.status!=='pending'&&a.kind!=='venta'),n=t[0]||f[0],pv=M.day.filter(a=>a.status==='done'&&(a.items||[]).length).sort((a,b)=>String(b.created_at).localeCompare(String(a.created_at))),pu=pv.reduce((t,a)=>t+a.items.reduce((s,i)=>s+i.qty,0),0),pt=pv.reduce((t,a)=>t+a.items.reduce((s,i)=>s+i.qty*i.price,0),0);
   const empty=x=>`<div class="group"><div class="empty"><b>${x}</b></div></div>`;
   const unr=M.unrec&&M.unrec.n?`<div class="group pad" style="margin-bottom:12px"><b>${M.unrec.n} turno${M.unrec.n===1?'':'s'} sin registrar</b><p class="hint">Quedaron pendientes de días anteriores. Marcá si se hicieron, si faltó el cliente o si se cancelaron.</p><button class="btn" onclick="agDate='${M.unrec.d}';AG=null;go('ag')">Ver el último</button></div>`:'';
   return `${unr}<h1 class="title">Mi día</h1>${PUSH.card('banner')}
@@ -54,6 +54,7 @@ function vDia(){
   ${n?`<div class="next now" style="margin-top:14px"><span class="t">${n.kind==='turno'?esc(n.time):'Fila'}</span><div class="mn"><span class="lb">${n.kind==='turno'?'Próximo turno':'Siguiente en la fila'}</span><b>${esc(n.cname)}</b><small>${esc(n.service_name)} · ${fmt(n.price)}</small></div><button class="qd" onclick="doneSheet('${n.id}')" aria-label="Hecho">${ico('check')}</button></div>`:''}
   ${sec('Turnos',t.length+' pendientes',t.length?t.map(ev).join(''):empty('Sin turnos pendientes'))}
   ${sec('Fila','Orden de llegada',f.length?f.map(ev).join(''):empty('Nadie esperando'))}
+  ${sec('Productos',pv.length?`${pu} vendido${pu===1?'':'s'} · ${fmt(pt)}`:'Ventas de hoy',`${pv.length?`<div class="group pad">${pv.map(prodRow).join('')}</div><p class="hint">Tocá una venta de mostrador para anularla.</p>`:empty('Todavía no se vendieron productos')}<button class="btn primary" style="width:100%;margin-top:10px" onclick="ventaSheet()">+ Venta de producto</button>`)}
   ${c.length?sec('Cerrados hoy',c.length+'',c.map(ev).join('')):''}`;
 }
 function doneSheet(id){
@@ -168,6 +169,29 @@ function promoSheet(id){const p=id?A.promos.find(x=>x.id===id):null,ck=new Set(p
 async function savePromo(id){try{await post('/admin/promo',{id:id||null,title:$('pn').value,kind:$('pk').value,pct:$('pp').value,services:[...document.querySelectorAll('.pv:checked')].map(x=>x.value),start:$('pd').value,end:$('ph').value,message:$('pm').value});closeSheet();await load();draw();toast('Promoción guardada')}catch(e){$('pe2').textContent=e.message}}
 async function togPromo(id){await post('/admin/promo/toggle',{id});await load();draw()}
 async function delPromo(id){if(!await confirmD('¿Borrar esta promoción?','Borrar',true))return;await post('/admin/promo/del',{id});await load();draw()}
+
+/* ---- Ventas de productos (mostrador) ---- */
+const prodRow=a=>{const t=a.items.reduce((s,i)=>s+i.qty*i.price,0),v=a.kind==='venta';return `<div class="hrow" ${v?`style="cursor:pointer" onclick="voidSale('${a.id}')"`:''}><span>${a.items.map(i=>i.qty+' × '+esc(i.name)).join(', ')}<small>${hh(a.created_at)} · ${v?'Venta en mostrador':'Con el turno de '+esc(a.cname)}${a.pay?' · '+(a.pay==='transferencia'?'Transferencia':'Efectivo'):''}</small></span><b>${fmt(t)}</b></div>`};
+function vtot(){const e=$('vt');if(!e)return;const t=pqSel().reduce((s,x)=>s+x.qty*((M.products.find(p=>p.id===x.id)||{price:0}).price),0);e.textContent=t?'Total a cobrar: '+fmt(t):''}
+function ventaSheet(){const owner=M.me.role==='owner',pb=prodBoxes({});
+  sheet(`<h2>Venta de producto</h2><p class="sub">Se descuenta del stock y suma a las ganancias del día.</p>${owner?`<div class="field"><label>Vendió</label><select id="vb">${stOpts(M.me.id)}</select></div>`:''}
+  ${pb||'<div class="group pad"><p class="hint">Todavía no hay productos activos para vender.</p></div>'}
+  <p class="sub" id="vt" style="font-weight:600"></p>
+  <div class="field"><label>Medio de pago</label><div class="seg" id="dp"><button class="on" data-v="efectivo">Efectivo</button><button data-v="transferencia">Transferencia</button></div></div>
+  <p class="err" id="ve"></p><button class="btn primary" id="vbtn" onclick="saveVenta()">Registrar venta</button>`);
+  document.querySelectorAll('#dp button').forEach(b=>b.onclick=()=>document.querySelectorAll('#dp button').forEach(x=>x.classList.toggle('on',x===b)));
+  document.querySelectorAll('.pq').forEach(i=>i.oninput=vtot);
+}
+let ventaBusy=false;
+async function saveVenta(force){
+  if(ventaBusy)return;const p=pqSel();
+  if(!p.length){$('ve').textContent='Elegí al menos un producto';return}
+  ventaBusy=true;const b=$('vbtn');if(b)b.disabled=true;
+  try{await post('/sale',{products:p,pay:document.querySelector('#dp .on').dataset.v,staff:($('vb')||{}).value,force:force===true});closeSheet();await load();draw();toast('Venta registrada')}
+  catch(e){if(e.data&&e.data.soft){ventaBusy=false;if(await confirmD(e.message+' ¿Registrar esta también?','Registrar igual'))await saveVenta(true)}else{const x=$('ve');if(x)x.textContent=e.message}}
+  finally{ventaBusy=false;const b2=$('vbtn');if(b2)b2.disabled=false}
+}
+async function voidSale(id){if(!await confirmD('¿Anular esta venta? Los productos vuelven al stock.','Anular venta',true))return;try{await post('/sale/void',{id});await load();draw();toast('Venta anulada')}catch(e){alertD(e.message)}}
 const EXPCATS=['Alquiler','Insumos','Servicios','Publicidad','Sueldos','Otros'];
 async function addExp(force){
   if(expBusy)return;
@@ -198,7 +222,7 @@ function vAg(){
   <div class="agnav"><button class="glassbtn" onclick="agGo(-1)" aria-label="Día anterior">${ico('chevL')}</button><label class="agd"><b>${longDate(d)}</b><input type="date" value="${d}" onchange="agSet(this.value)"></label><button class="glassbtn" onclick="agGo(1)" aria-label="Día siguiente">${ico('chev')}</button></div>
   ${d!==AG.today?`<button class="btn" style="width:100%;margin-bottom:10px" onclick="agSet('${AG.today}')">Ir a hoy</button>`:''}
   ${owner?`<div class="field" style="margin-top:0"><label>Barbero</label><select onchange="agStaff=this.value;AG=null;draw()"><option value="all">Todos</option>${A.team.filter(s=>s.active!==false).map(s=>`<option value="${s.id}" ${agStaff===s.id?'selected':''}>${esc(s.name)}</option>`).join('')}</select></div>`:''}
-  <div class="row2"><button class="btn primary" onclick="newSheet()">+ Turno</button><button class="btn" onclick="blkSheet()">Bloquear</button></div>
+  <div class="row2" style="grid-template-columns:repeat(3,1fr)"><button class="btn primary" onclick="newSheet()">+ Turno</button><button class="btn primary" onclick="ventaSheet()">+ Venta</button><button class="btn" onclick="blkSheet()">Bloquear</button></div>
   ${dayB.map(blkCard).join('')}
   ${sec('Turnos',String(AG.appts.length),AG.appts.length?AG.appts.map(a=>ev(a,true)).join(''):'<div class="group"><div class="empty"><b>Sin turnos este día</b></div></div>')}
   ${later.length?sec('Otros bloqueos',String(later.length),later.map(blkCard).join('')):''}`;
