@@ -29,6 +29,9 @@ Datos de ejemplo que vienen cargados (cambiar antes de usarlo en serio):
 
 Los servicios, precios, duraciones y horarios (lunes a sábado, de 8 a 21) son los reales de Fausto. Los productos y el teléfono del local todavía no están cargados. Todo se edita desde **Gestión → Ajustes**.
 
+## Celular y PC
+Todo funciona en celular y en computadora. Desde 1024 px de ancho se usa el diseño de escritorio (`public/desktop.css`, se carga al final en reservas, Mis turnos y Gestión): la reserva queda en dos columnas con el resumen fijo a la derecha, y Gestión pasa a un menú lateral con ventanas centradas. El comprobante de "¡Listo!" queda angosto y centrado, y el aviso de PIN de ejemplo en Gestión tiene su espacio. En celulares y tablets chicas no cambia nada. Para ajustar el ancho o el menú, editá solo ese archivo.
+
 ## Estructura
 `worker.js` (API) · `schema.sql` (tablas D1) · `public/app.css` y `public/gestion/gestion.css` (misma base visual que ElMellyBarber, en claro con dorado), `public/common.js` · `public/reservar/` · `public/gestion/`
 
