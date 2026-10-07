@@ -45,25 +45,42 @@ function fitHeader(){
   if(m1){mt.style.fontSize='13px';m1.style.display='block';m1.style.width='max-content';const w=m1.offsetWidth,a=mt.offsetWidth;m1.style.width='';if(w&&a)mt.style.fontSize=Math.max(10,Math.min(17,13*a*.99/w)).toFixed(2)+'px'}
 }
 addEventListener('resize',fitHeader);if(document.fonts&&document.fonts.addEventListener)document.fonts.addEventListener('loadingdone',fitHeader);
+
+/* Escritorio 16:9: cada panel se ajusta solo a la altura de la pantalla (achica el contenido si hace falta) para que NUNCA haya scroll */
+function fitStage(){
+  const on=matchMedia('(min-width:1100px)').matches&&document.querySelector('.cols');
+  /* En escritorio "Tus datos" va en el panel izquierdo; en celular queda en su lugar de siempre */
+  const ds=document.getElementById('dataSec'),dh=document.getElementById('dataHome'),c1=document.querySelector('.c1 .fit');
+  if(ds&&dh&&c1){if(on){if(ds.parentNode!==c1)c1.appendChild(ds)}else if(ds.previousSibling!==dh)dh.after(ds)}
+  document.querySelectorAll('.fit').forEach(f=>{
+    f.style.zoom='';if(!on)return;
+    const b=f.parentElement,cs=getComputedStyle(b),avail=b.clientHeight-parseFloat(cs.paddingTop)-parseFloat(cs.paddingBottom);
+    let z=1;
+    while(f.getBoundingClientRect().height>avail+1&&z>.5){z=Math.round((z-.03)*100)/100;f.style.zoom=z}
+  })
+}
+addEventListener('resize',fitStage);if(document.fonts&&document.fonts.ready)document.fonts.ready.then(fitStage);
+new MutationObserver(fitStage).observe(document.getElementById('app'),{childList:true,subtree:true,characterData:true});
 function renderBooking(){
   $('app').innerHTML=`
-  <div class="cols"><div class="col c1">
+  <div class="cols"><div class="col c1"><div class="fit">
   <section class="hero"><div class="halo"><div class="mark"><img src="${data.logo?'/api/img/'+data.logo:'/logo.png'}" alt="Logo de ${esc(data.name)}" style="width:100%;height:100%;object-fit:cover;border-radius:50%"></div></div><h1>${titleHTML(data.name)}</h1><div class="metarow"><span class="pole l"></span><p class="meta"><span class="m1">Cortes adaptados a tu estilo · +10 años · Desde 2018</span>${data.address?`<span class="m2">${esc(data.address)}</span>`:''}</p><span class="pole r"></span></div><div class="contact">${data.phone?`<a href="https://wa.me/${esc(String(data.phone).replace(/\D/g,''))}" target="_blank" rel="noopener">${ico('wa')}<span>WhatsApp</span></a>`:''}${data.instagram?`<a href="https://instagram.com/${esc(data.instagram)}" target="_blank" rel="noopener"><span>Instagram</span></a>`:''}${data.address?`<a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(data.address)}" target="_blank" rel="noopener">${ico('pin')}<span>Cómo llegar</span></a>`:''}</div></section>
   ${(data.promos||[]).map(x=>`<div class="group pad" style="margin-top:14px;text-align:center"><b>${ico('tag')} ${esc(x.title)}</b><div class="sub">${x.kind==='2x1'?'2x1 · dos personas al precio de una':x.pct+'% off'} · hasta el ${esc(x.end.slice(8,10)+'/'+x.end.slice(5,7))}</div>${x.message?`<div class="small" style="margin-top:4px">${esc(x.message)}</div>`:''}</div>`).join('')}
   <div class="steps"><i class="on"></i><i></i><i></i><i></i></div>
   <section class="sec"><div class="seg" id="modes"><button data-m="turno"><b>Con turno</b><small>Elegís día y hora</small></button><button data-m="fila"><b>Sin turno</b><small>Orden de llegada · hoy</small></button></div></section>
-  </div><div class="col c2">
+  </div></div><div class="col c2"><div class="fit">
   <section class="sec"><div class="sechead"><b>Servicio</b><span>Elegí uno</span></div><div class="group" id="svcs"></div><div id="gst"></div><div id="adds"></div></section>
   <section class="sec"><div class="sechead"><b>Barbero</b><span>Elegí con quién</span></div><div class="group" id="stf"></div></section>
-  </div><div class="col c3"><div class="cscroll">
+  </div></div><div class="col c3"><div class="cscroll"><div class="fit">
   <div id="when"></div>
-  <section class="sec"><div class="sechead"><b>Tus datos</b><span>Solo lo necesario</span></div><div class="group pad" id="dataBox">
+  <template id="dataHome"></template>
+  <section class="sec" id="dataSec"><div class="sechead"><b>Tus datos</b><span>Solo lo necesario</span></div><div class="group pad" id="dataBox">
     <div class="field" style="margin-top:0"><label for="name">Nombre</label><input id="name" autocomplete="name" placeholder="Tu nombre" value="${esc(sel.name)}" oninput="sel.name=this.value;updateSummary()"></div>
     <input id="hp" tabindex="-1" autocomplete="off" aria-hidden="true" style="position:absolute;left:-9999px;opacity:0"><div class="field"><label for="wa">WhatsApp</label><div class="pair"><input class="prefix" value="+54 9" disabled aria-label="Prefijo"><input id="wa" inputmode="tel" autocomplete="tel" placeholder="2477 201614" value="${esc(sel.wa?displayWA(sel.wa).replace(/^\+54 9 /,''):'')}" oninput="sel.wa=this.value;updateSummary()"></div><p class="hint">Ingresá tu número local, sin +54 9.</p></div>
     <div class="field"><label for="bd">Cumpleaños (opcional)</label><input id="bd" type="date" value="${esc(sel.bd)}" onchange="sel.bd=this.value"><p class="hint">Para saludarte ese día.</p></div>
     <div id="formError" class="err"></div></div></section>
   <div id="prods"></div>
-  </div><div id="summary"></div></div></div>`;
+  </div></div><div id="summary"></div></div></div>`;
   document.querySelectorAll('#modes button').forEach(b=>b.onclick=()=>{m=b.dataset.m;sel.time=null;refresh()});
   drawAll();if(ready())refresh();fitHeader();if(document.fonts&&document.fonts.ready)document.fonts.ready.then(fitHeader)
 }
