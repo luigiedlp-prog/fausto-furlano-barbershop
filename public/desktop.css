@@ -2,65 +2,16 @@
    Se carga al final en /reservar/, mis-turnos y /gestion/. En celulares y tablets chicas no cambia nada.
    - Reserva: formulario a la izquierda y resumen fijo a la derecha.
    - Gestión: menú lateral en lugar de la barra de abajo, contenido centrado y ventanas en el medio. */
+/* Contenedores de la reserva: en celular y tablet no existen visualmente */
+.cols,.col,.cscroll{display:contents}
+
 @media (min-width:1024px){
   /* Con layout propio de escritorio se saca el zoom del 75% (solo servía para la columna angosta) */
   html{zoom:1}
 
-  /* ---------- Reserva ---------- */
+  /* ---------- Reserva (1024–1099px: columna centrada; desde 1100px ver "Escritorio 16:9" al final) ---------- */
   html[data-role=client] .wrap{max-width:640px}
-  html[data-role=client] body.room .wrap{max-width:1180px;padding-left:32px;padding-right:32px}
-  /* Dos columnas: pasos a la izquierda, resumen fijo a la derecha. El encabezado ocupa todo el ancho arriba. */
-  #app:has(>#summary){display:grid;grid-template-columns:minmax(0,1fr) 400px;column-gap:40px;row-gap:0;align-items:start}
-  #app:has(>#summary)>*{grid-column:1;min-width:0}
-  #app:has(>#summary)>.hero{grid-column:1 / -1;grid-row:1}
-  #app:has(>#summary)>#summary{grid-column:2;grid-row:2 / span 40;align-self:stretch}
-  #summary .dock{position:sticky;top:24px;bottom:auto;margin-top:18px}
-  /* Pantalla de "¡Listo!" (comprobante): sin el resumen a la derecha, queda angosta y centrada en vez de estirarse a todo el ancho */
-  #app:not(:has(>#summary))>.center{max-width:560px;margin-left:auto;margin-right:auto}
-  /* "Mis turnos / cancelar" y el crédito quedan centrados bajo la columna del formulario (400px del resumen + 40px de separación) */
-  html[data-role=client] body.room .wrap:has(#summary)>.hint,
-  html[data-role=client] body.room .wrap:has(#summary)>.credit{margin-right:440px!important}
-  /* la foto de fondo ocupa toda la pantalla (antes era una franja de celular) */
-  html[data-theme=dark] body.room .roomfx{-webkit-mask-image:none;mask-image:none}
-  html[data-theme=dark] body.room .roomfx img{width:100%}
-
-  /* Encabezado horizontal: logo a la izquierda; nombre, datos y botones al lado (antes todo apilado y centrado en media pantalla) */
-  html[data-role=client] .hero{display:grid;grid-template-columns:auto minmax(0,1fr);column-gap:40px;align-items:center;justify-items:start;text-align:left;padding:8px 4px 18px}
-  html[data-role=client] .hero>.halo{grid-column:1;grid-row:1 / span 3;align-self:center;margin:0;width:170px;height:170px}
-  html[data-role=client] .hero>:not(.halo){grid-column:2;justify-self:start}
-  html[data-role=client] .hero h1{width:auto;text-align:left;font-size:58px!important;line-height:1.02}
-  html[data-role=client] .hero h1 .l2{font-size:1.05em}
-  html[data-role=client] .hero .metarow{justify-content:flex-start;margin-top:10px;width:auto}
-  html[data-role=client] .hero .metarow .pole{display:none}
-  html[data-role=client] .hero .meta{font-size:16px!important;text-align:left;text-wrap:pretty}
-  html[data-role=client] .hero .meta .m1,html[data-role=client] .hero .meta .m2{display:inline!important;width:auto!important}
-  html[data-role=client] .hero .meta .m2::before{content:" · "}
-  html[data-role=client] .hero .contact{justify-content:flex-start;margin-top:16px;width:auto}
-  html[data-role=client] .hero .contact a{flex:0 0 auto}
-  html[data-role=client] .hero .contact a{padding:10px 20px;font-size:15px}
-
-  /* Barberos: tarjetas en cuadrícula en vez de filas gigantes con un círculo de 92px */
-  #stf{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;background:none!important;border:0!important;box-shadow:none!important;border-radius:0;overflow:visible}
-  #stf .svc{flex-direction:column;justify-content:flex-start;text-align:center;gap:10px;padding:22px 12px 18px;border:1px solid var(--line2);border-radius:var(--r);background:var(--card);box-shadow:0 6px 18px rgba(0,0,0,.18)}
-  html[data-theme=dark] body.room #stf .svc{background:rgba(16,16,19,.72)}
-  #stf .svc::before{display:none}
-  #stf .svc .main{flex:none;width:100%}
-  #stf .svc .main b{font-size:17px}
-  #stf .svc .ck{position:absolute;top:10px;right:10px;width:22px;height:22px}
-  #stf .svc.on{border-color:var(--gold,#d4af5a);box-shadow:0 0 0 1px var(--gold,#d4af5a),0 8px 24px var(--glow-soft)}
-  #stf .svc.on:not(:has(.ic.ph)){background:linear-gradient(180deg,var(--tint),transparent 70%),var(--card)}
-  html[data-theme=dark] body.room #stf .svc.on{background:linear-gradient(180deg,var(--tint),transparent 70%),rgba(16,16,19,.78)}
-  #stf .svc .ic.lt{width:84px;height:84px;font-size:32px}
-
-  /* Horarios: más columnas, aprovechan el ancho */
-  .times{grid-template-columns:repeat(6,1fr)}
-
-  /* Datos: nombre y WhatsApp lado a lado */
-  #dataBox{display:grid;grid-template-columns:1fr 1fr;column-gap:16px}
-  #dataBox>.field{margin-top:0!important}
-  #dataBox>.field+.field{margin-top:0!important}
-  #dataBox>.field:nth-of-type(3){grid-column:1}
-  #dataBox>.err{grid-column:1 / -1}
+  #app:not(:has(.cols))>.center{max-width:560px;margin-left:auto;margin-right:auto}
 
   /* ---------- Gestión ---------- */
   html[data-role=admin] body:has(#tabbar:not(.hidden)){padding-left:232px}
@@ -111,4 +62,98 @@
   html[data-role=admin] #app:has(>.sec .hrow){display:grid;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:20px;align-items:start}
   html[data-role=admin] #app:has(>.sec .hrow)>*{grid-column:1/-1}
   html[data-role=admin] #app:has(>.sec .hrow)>.sec{grid-column:auto}
+}
+
+/* ===== Escritorio 16:9 (desde 1100px): pantalla fija de tres paneles, sin scroll de página =====
+   Izquierda: marca + modo · Centro: servicio, adicionales y barbero · Derecha: día, horario, datos y confirmar. */
+@media (min-width:1100px){
+  :root{--c1:clamp(360px,27vw,560px);--c3:clamp(380px,29vw,580px)}
+  html:has(.cols),body.room:has(.cols){height:100%;overflow:hidden}
+  html[data-theme=dark] body.room .roomfx{-webkit-mask-image:none;mask-image:none}
+  html[data-theme=dark] body.room .roomfx img{width:100%}
+  html[data-role=client] .wrap:has(.cols){max-width:none;margin:0;padding:0;height:100vh;height:100dvh}
+  .wrap:has(.cols)>#app{height:100%}
+  .wrap:has(.cols)>.bar{position:absolute;top:16px;left:18px;z-index:6;min-height:0}
+  .wrap:has(.cols)>.bar .who{display:none}
+
+  .cols{display:grid;grid-template-columns:var(--c1) minmax(0,1fr) var(--c3);height:100vh;height:100dvh}
+  .col{display:flex;flex-direction:column;min-width:0;min-height:0}
+  .cscroll{display:block;flex:1;min-height:0;overflow-y:auto}
+  .c1,.c2,.cscroll{scrollbar-width:thin;scrollbar-color:var(--line2) transparent}
+
+  /* Panel izquierdo: marca */
+  .c1{align-items:stretch;overflow-y:auto;padding:28px 38px 120px;border-right:1px solid var(--line);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px)}
+  html[data-theme=dark] .c1{background:linear-gradient(180deg,rgba(8,8,10,.62),rgba(8,8,10,.86))}
+  html[data-theme=light] .c1{background:rgba(255,255,255,.62)}
+  .c1>:first-child{margin-top:auto}
+  .c1>:last-child{margin-bottom:auto}
+  .c1 .hero{padding:0 0 6px}
+  .c1 .hero>.halo{width:clamp(120px,21vh,210px);height:clamp(120px,21vh,210px)}
+  .c1 .steps{margin-top:22px}
+  .c1 .sec{margin-top:14px}
+  .wrap:has(.cols)>.hint{position:absolute;left:0;width:var(--c1);bottom:62px;margin:0!important;z-index:3;text-align:center}
+  .wrap:has(.cols)>.credit{position:absolute;left:0;width:var(--c1);bottom:14px;margin:0;z-index:3;display:flex;justify-content:center}
+
+  /* Panel central: qué y con quién */
+  .c2{overflow-y:auto;padding:clamp(24px,5vh,56px) clamp(28px,3.2vw,64px)}
+  .c2>.sec:first-child{margin-top:0}
+  .c2 .sechead b{font-size:24px}
+  .c2 #svcs .svc .ic,.c2 #adds .svc .ic{width:clamp(64px,8.4vh,96px);height:clamp(64px,8.4vh,96px)}
+  .c2 .sec{margin-top:clamp(14px,3.2vh,36px)}
+  .c2 #adds .sechead{margin-top:clamp(14px,3.2vh,36px)!important}
+  html[data-theme=dark] .c2 .group{background:rgba(16,16,19,.74);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
+
+  /* Barberos: tarjetas en cuadrícula */
+  #stf{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;background:none!important;border:0!important;box-shadow:none!important;border-radius:0;overflow:visible;backdrop-filter:none!important;-webkit-backdrop-filter:none!important}
+  #stf .svc{flex-direction:column;justify-content:flex-start;text-align:center;gap:10px;padding:20px 12px 16px;border:1px solid var(--line2);border-radius:var(--r);background:var(--card);box-shadow:0 6px 18px rgba(0,0,0,.18)}
+  html[data-theme=dark] body.room #stf .svc{background:rgba(16,16,19,.74)}
+  #stf .svc::before{display:none}
+  #stf .svc .main{flex:none;width:100%}
+  #stf .svc .main b{font-size:17px}
+  #stf .svc .ck{position:absolute;top:10px;right:10px;width:22px;height:22px}
+  #stf .svc .ic.lt{width:72px;height:72px;font-size:28px}
+  #stf .svc.on{border-color:var(--gold,#d4af5a);box-shadow:0 0 0 1px var(--gold,#d4af5a),0 8px 24px var(--glow-soft)}
+  #stf .svc.on:not(:has(.ic.ph)){background:linear-gradient(180deg,var(--tint),transparent 70%),var(--card)}
+  html[data-theme=dark] body.room #stf .svc.on{background:linear-gradient(180deg,var(--tint),transparent 70%),rgba(16,16,19,.82)}
+
+  /* Panel derecho: cuándo, datos y confirmar */
+  .c3{border-left:1px solid var(--line);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px)}
+  html[data-theme=dark] .c3{background:linear-gradient(180deg,rgba(8,8,10,.62),rgba(8,8,10,.86))}
+  html[data-theme=light] .c3{background:rgba(255,255,255,.62)}
+  .cscroll{padding:clamp(24px,5vh,56px) clamp(24px,2.2vw,40px) 14px}
+  .cscroll>#when>.sec:first-child,.cscroll>.sec:first-child{margin-top:0}
+  .cscroll .sechead b{font-size:22px}
+  .times{grid-template-columns:repeat(auto-fill,minmax(78px,1fr))}
+  html[data-theme=dark] .cscroll .group{background:rgba(16,16,19,.74)}
+  #dataBox{display:block}
+  #summary{padding:14px clamp(24px,2.2vw,40px) 26px;border-top:1px solid var(--line)}
+  #summary .dock{position:static;left:auto;right:auto;bottom:auto;top:auto;transform:none;width:auto;max-width:none;margin:0}
+
+  /* Pantallas bajas (laptops 16:9 de 720–800px de alto): todo un poco más compacto */
+  @media (max-height:820px){
+    .c2 #svcs .svc .ic,.c2 #adds .svc .ic{width:60px;height:60px}
+    #stf .svc{padding:14px 10px 12px}
+    #stf .svc .ic.lt{width:56px;height:56px;font-size:22px}
+    .c1 .hero>.halo{width:clamp(96px,18vh,150px);height:clamp(96px,18vh,150px)}
+    .c1{padding-bottom:104px}
+    .c1 .steps{margin-top:14px}
+    .cscroll{padding-top:22px}
+    .cscroll .sec{margin-top:16px}
+    .cscroll .sechead{padding-bottom:6px}
+    .cscroll .sechead b{font-size:20px}
+    .times{grid-template-columns:repeat(auto-fill,minmax(64px,1fr));gap:6px}
+    .time{height:34px;font-size:17px}
+    .tgroup+.tgroup{margin-top:8px}
+    .tgroup .small{margin-bottom:5px}
+    .cscroll .group.pad{padding:12px 14px}
+    .cscroll .field{margin-top:8px}
+    .cscroll .field label{margin-bottom:3px}
+    .cscroll .field input:not([type=checkbox]){min-height:40px;font-size:16px}
+    .cscroll .field .hint{margin-top:3px;font-size:12px}
+    .seg button{padding:6px 4px}
+    #summary{padding-top:10px;padding-bottom:16px}
+    #summary .dock{padding:12px 14px}
+    #summary .dock .btn{margin-top:10px}
+    #summary .pills{margin-top:8px}
+  }
 }
