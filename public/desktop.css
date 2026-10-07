@@ -2,16 +2,25 @@
    Se carga al final en /reservar/, mis-turnos y /gestion/. En celulares y tablets chicas no cambia nada.
    - Reserva: formulario a la izquierda y resumen fijo a la derecha.
    - Gestión: menú lateral en lugar de la barra de abajo, contenido centrado y ventanas en el medio. */
-/* Contenedores de la reserva: en celular y tablet no existen visualmente */
-.cols,.col,.cscroll,.fit{display:contents}
-
 @media (min-width:1024px){
   /* Con layout propio de escritorio se saca el zoom del 75% (solo servía para la columna angosta) */
   html{zoom:1}
 
-  /* ---------- Reserva (1024–1099px: columna centrada; desde 1100px ver "Escritorio 16:9" al final) ---------- */
+  /* ---------- Reserva ---------- */
   html[data-role=client] .wrap{max-width:640px}
-  #app:not(:has(.cols))>.center{max-width:560px;margin-left:auto;margin-right:auto}
+  html[data-role=client] body.room .wrap{max-width:1120px;padding-left:32px;padding-right:32px}
+  #app:has(>#summary){display:grid;grid-template-columns:minmax(0,1fr) 390px;column-gap:40px;row-gap:0;align-items:start}
+  #app:has(>#summary)>*{grid-column:1;min-width:0}
+  #app:has(>#summary)>#summary{grid-column:2;grid-row:1 / span 40;align-self:stretch}
+  #summary .dock{position:sticky;top:24px;bottom:auto;margin-top:26px}
+  /* Pantalla de "¡Listo!" (comprobante): sin el resumen a la derecha, queda angosta y centrada en vez de estirarse a todo el ancho */
+  #app:not(:has(>#summary))>.center{max-width:560px;margin-left:auto;margin-right:auto}
+  /* "Mis turnos / cancelar" y el crédito quedan centrados bajo la columna del formulario, no bajo toda la pantalla (390px del resumen + 40px de separación) */
+  html[data-role=client] body.room .wrap:has(#summary)>.hint,
+  html[data-role=client] body.room .wrap:has(#summary)>.credit{margin-right:430px!important}
+  /* la foto de fondo ocupa toda la pantalla (antes era una franja de celular) */
+  html[data-theme=dark] body.room .roomfx{-webkit-mask-image:none;mask-image:none}
+  html[data-theme=dark] body.room .roomfx img{width:100%}
 
   /* ---------- Gestión ---------- */
   html[data-role=admin] body:has(#tabbar:not(.hidden)){padding-left:232px}
@@ -62,124 +71,4 @@
   html[data-role=admin] #app:has(>.sec .hrow){display:grid;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:20px;align-items:start}
   html[data-role=admin] #app:has(>.sec .hrow)>*{grid-column:1/-1}
   html[data-role=admin] #app:has(>.sec .hrow)>.sec{grid-column:auto}
-}
-
-/* ===== Escritorio 16:9 (desde 1100px): pantalla fija de tres paneles, sin scroll de página =====
-   Izquierda: marca + modo · Centro: servicio, adicionales y barbero · Derecha: día, horario, datos y confirmar. */
-@media (min-width:1100px){
-  :root{--c1:clamp(340px,23vw,480px);--c3:clamp(380px,27vw,540px)}
-  html:has(.cols),body.room:has(.cols){height:100%;overflow:hidden}
-  html[data-theme=dark] body.room .roomfx{-webkit-mask-image:none;mask-image:none}
-  html[data-theme=dark] body.room .roomfx img{width:100%}
-  html[data-role=client] .wrap:has(.cols){max-width:none;margin:0;padding:0;height:100vh;height:100dvh}
-  .wrap:has(.cols)>#app{height:100%}
-  .wrap:has(.cols)>.bar{position:absolute;top:16px;left:18px;z-index:6;min-height:0}
-  .wrap:has(.cols)>.bar .who{display:none}
-
-  .cols{display:grid;grid-template-columns:var(--c1) minmax(0,1fr) var(--c3);height:100vh;height:100dvh}
-  .col{display:flex;flex-direction:column;min-width:0;min-height:0}
-  .cscroll{display:block;flex:1;min-height:0;overflow:hidden}
-  .fit{display:block}
-
-  /* Panel izquierdo: marca */
-  .c1{align-items:stretch;overflow:hidden;padding:28px 38px 120px;border-right:1px solid var(--line);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px)}
-  html[data-theme=dark] .c1{background:linear-gradient(180deg,rgba(8,8,10,.62),rgba(8,8,10,.86))}
-  html[data-theme=light] .c1{background:rgba(255,255,255,.62)}
-  .c1>.fit{margin:auto 0}
-  .c1 .hero{padding:0 0 6px}
-  .c1 .hero>.halo{width:clamp(120px,21vh,210px);height:clamp(120px,21vh,210px)}
-  .c1 .steps{margin-top:22px}
-  .c1 .sec{margin-top:14px}
-  .wrap:has(.cols)>.hint{position:absolute;left:0;width:var(--c1);bottom:62px;margin:0!important;z-index:3;text-align:center}
-  .wrap:has(.cols)>.credit{position:absolute;left:0;width:var(--c1);bottom:14px;margin:0;z-index:3;display:flex;justify-content:center}
-
-  /* Panel central: qué y con quién */
-  .c2{overflow:hidden;padding:clamp(24px,5vh,56px) clamp(28px,3.2vw,64px)}
-  .c2 .fit>.sec:first-child{margin-top:0}
-  .c2 .sechead b{font-size:24px}
-  .c2 #svcs .svc .ic,.c2 #adds .svc .ic{width:clamp(52px,6.4vh,68px);height:clamp(52px,6.4vh,68px)}
-  .c2 .sec{margin-top:clamp(14px,3.2vh,36px)}
-  .c2 #adds .sechead{margin-top:clamp(14px,3.2vh,36px)!important}
-  html[data-theme=dark] .c2 .group{background:rgba(16,16,19,.74);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
-
-  /* Servicios, adicionales y barberos: tarjetas compactas en cuadrícula (entran muchos sin scrollear) */
-  .c2 #svcs,.c2 #adds .group,#stf{display:grid;gap:10px;background:none!important;border:0!important;box-shadow:none!important;border-radius:0;overflow:visible;backdrop-filter:none!important;-webkit-backdrop-filter:none!important}
-  .c2 #svcs,.c2 #adds .group{grid-template-columns:repeat(auto-fill,minmax(320px,1fr))}
-  #stf{grid-template-columns:repeat(auto-fill,minmax(190px,1fr))}
-  .c2 #svcs .svc,.c2 #adds .svc,#stf .svc{padding:10px 12px;gap:12px;border:1px solid var(--line2);border-radius:var(--r);background:var(--card);box-shadow:0 4px 14px rgba(0,0,0,.16);min-width:0}
-  html[data-theme=dark] body.room .c2 #svcs .svc,html[data-theme=dark] body.room .c2 #adds .svc,html[data-theme=dark] body.room #stf .svc{background:rgba(16,16,19,.76)}
-  .c2 #svcs .svc::before,.c2 #adds .svc::before,#stf .svc::before{display:none}
-  .c2 .svc .main{min-width:0}
-  .c2 #svcs .svc .main small+small,.c2 #adds .svc .main small+small{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .c2 .svc .pr{font-size:19px}
-  #stf .svc .main b{font-size:16px}
-  #stf .svc .ic.lt{width:46px;height:46px;font-size:18px;flex:none}
-  .c2 #svcs .svc.on,.c2 #adds .svc.on,#stf .svc.on{border-color:var(--gold,#d4af5a);box-shadow:0 0 0 1px var(--gold,#d4af5a),0 6px 20px var(--glow-soft)}
-  html[data-theme=dark] body.room .c2 #svcs .svc.on,html[data-theme=dark] body.room .c2 #adds .svc.on,html[data-theme=dark] body.room #stf .svc.on{background:linear-gradient(180deg,var(--tint),transparent 80%),rgba(16,16,19,.84)}
-
-  /* Panel derecho: cuándo, datos y confirmar */
-  .c3{border-left:1px solid var(--line);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px)}
-  html[data-theme=dark] .c3{background:linear-gradient(180deg,rgba(8,8,10,.62),rgba(8,8,10,.86))}
-  html[data-theme=light] .c3{background:rgba(255,255,255,.62)}
-  .cscroll{padding:clamp(16px,2.6vh,28px) clamp(22px,2vw,36px) 6px}
-  .cscroll .fit>#when>.sec:first-child,.cscroll .fit>.sec:first-child{margin-top:0}
-  .cscroll .sechead b{font-size:22px}
-  .times{grid-template-columns:repeat(auto-fill,minmax(60px,1fr));gap:5px}
-  html[data-theme=dark] .cscroll .group,html[data-theme=dark] .c1 .group{background:rgba(16,16,19,.74)}
-  .cscroll .sec{margin-top:14px}
-  .cscroll .sechead{padding-bottom:6px}
-  .c1 .sechead b,.cscroll .sechead b{font-size:20px}
-  .cscroll .seg{overflow:visible!important;grid-auto-columns:minmax(0,1fr)!important}
-  .cscroll .seg button{padding:7px 1px;min-width:0;font-size:12px}
-  .cscroll .seg button small{font-size:11px;white-space:nowrap}
-  .cscroll .tgroup+.tgroup{margin-top:8px}
-  .cscroll .tgroup .small{margin-bottom:5px}
-  .fit .group.pad{padding:10px 12px}
-  .fit .field{margin-top:8px}
-  .fit .field label{margin-bottom:3px}
-  .fit .field input:not([type=checkbox]){min-height:40px;font-size:16px}
-  .fit .field .hint{margin-top:3px;font-size:12px}
-  #dataBox .field:nth-of-type(3) .hint{display:none}
-  .c1 #dataSec{margin-top:18px}
-  #dataBox{display:block}
-  #prods .svc{padding:6px 12px;gap:10px}
-  #prods .svc .ic{width:36px;height:36px}
-  .time{height:32px;font-size:17px}
-  #summary{padding:10px clamp(22px,2vw,36px) 16px;border-top:1px solid var(--line)}
-  #summary .dock .top b{font-size:16px}
-  #summary .dock .top span.pr{font-size:26px}
-  #summary .pills{margin-top:6px;gap:5px}
-  #summary .pill{font-size:12px;padding:4px 8px}
-  #summary .dock .btn{margin-top:8px;min-height:44px}
-  #summary .dock .hint{margin-top:4px;font-size:12px}
-  #summary .dock{padding:12px 14px}
-  #summary .dock{position:static;left:auto;right:auto;bottom:auto;top:auto;transform:none;width:auto;max-width:none;margin:0}
-
-  /* Pantallas bajas (laptops 16:9 de 720–800px de alto): todo un poco más compacto */
-  @media (max-height:820px){
-    .c2 #svcs .svc .ic,.c2 #adds .svc .ic{width:48px;height:48px}
-    .c2 #svcs .svc,.c2 #adds .svc,#stf .svc{padding:8px 10px}
-    #stf .svc .ic.lt{width:40px;height:40px;font-size:16px}
-    .c1 .hero>.halo{width:clamp(96px,18vh,150px);height:clamp(96px,18vh,150px)}
-    .c1{padding-bottom:104px}
-    .c1 .steps{margin-top:14px}
-    .cscroll{padding-top:22px}
-    .cscroll .sec{margin-top:16px}
-    .cscroll .sechead{padding-bottom:6px}
-    .c1 .sechead b,.cscroll .sechead b{font-size:20px}
-    .times{gap:6px}
-    .time{height:34px;font-size:17px}
-    .tgroup+.tgroup{margin-top:8px}
-    .tgroup .small{margin-bottom:5px}
-    .cscroll .group.pad{padding:12px 14px}
-    .cscroll .field{margin-top:8px}
-    .cscroll .field label{margin-bottom:3px}
-    .cscroll .field input:not([type=checkbox]){min-height:40px;font-size:16px}
-    .cscroll .field .hint{margin-top:3px;font-size:12px}
-    .seg button{padding:6px 4px}
-    #summary{padding-top:10px;padding-bottom:16px}
-    #summary .dock{padding:12px 14px}
-    #summary .dock .btn{margin-top:10px}
-    #summary .pills{margin-top:8px}
-  }
 }
