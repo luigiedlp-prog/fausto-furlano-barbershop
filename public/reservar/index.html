@@ -24,12 +24,15 @@
 <script src="/common.js"></script><script src="/fx.js" defer></script>
 <script>
 let data,m=new URLSearchParams(location.search).get('modo')==='fila'?'fila':'turno',sel={service:null,staff:null,date:null,time:null,name:'',wa:'',bd:'',extras:[],products:{}},times=[],qi=null,rid=0;
+/* Pantallas anchas tipo 16:9 (PC): se arma todo en una sola pantalla, sin scroll */
+const WQ=matchMedia('(min-width:1180px) and (min-aspect-ratio:3/2) and (min-height:540px)');
+let fitS=1,fitT=0;
 const keepWA=w=>{try{localStorage.setItem('bp_whatsapp',w)}catch(e){}};
 try{sel.wa=localStorage.getItem('bp_whatsapp')||''}catch(e){}
 const dateParts=d=>{const x=new Date(d+'T12:00:00');return{day:x.toLocaleDateString('es-AR',{weekday:'short'}).replace('.',''),num:x.getDate(),month:x.toLocaleDateString('es-AR',{month:'short'}).replace('.','')}};
 const ready=()=>m==='turno'?!!(sel.service&&sel.staff&&sel.time):!!(sel.service&&sel.staff);
 const okData=()=>sel.name.trim()&&formatWA(sel.wa).length===13;
-function setProgress(){const n=(sel.service?1:0)+(sel.service&&sel.staff?1:0)+(ready()?1:0)+(ready()&&okData()?1:0);document.querySelectorAll('.steps i').forEach((x,i)=>x.classList.toggle('on',i<Math.max(1,n)))}
+function setProgress(){const n=(sel.service?1:0)+(sel.service&&sel.staff?1:0)+(ready()?1:0)+(ready()&&okData()?1:0);document.querySelectorAll('.steps i').forEach((x,i)=>x.classList.toggle('on',i<Math.max(1,n)));const cl=document.querySelector('.cols');if(cl)cl.dataset.n=n}
 
 async function start(){
   try{data=await api('/public');if(!sel.date)sel.date=data.today;$('who').textContent='Turnos online';renderBooking()}
@@ -40,29 +43,52 @@ function titleHTML(n){const m=String(n||'').trim().match(/^(.*?)\s*(barber\s*sho
 /* Ajusta el título y la línea de datos para que ocupen todo el ancho, igual que las secciones de abajo */
 function fitHeader(){
   const h=document.querySelector('.hero h1'),l1=h&&h.querySelector('.l1');
-  if(l1){h.style.fontSize='40px';l1.style.width='max-content';const w=l1.offsetWidth,a=h.offsetWidth;l1.style.width='';if(w&&a)h.style.fontSize=Math.max(22,Math.min(64,40*a*.985/w)).toFixed(2)+'px'}
+  if(l1){h.style.fontSize='40px';l1.style.width='max-content';const w=l1.offsetWidth,a=WQ.matches?h.parentElement.clientWidth:h.offsetWidth;l1.style.width='';if(w&&a)h.style.fontSize=Math.max(WQ.matches?12:22,Math.min(64,40*a*.985/w)).toFixed(2)+'px'}
   const mt=document.querySelector('.hero .meta'),m1=mt&&mt.querySelector('.m1');
-  if(m1){mt.style.fontSize='13px';m1.style.display='block';m1.style.width='max-content';const w=m1.offsetWidth,a=mt.offsetWidth;m1.style.width='';if(w&&a)mt.style.fontSize=Math.max(10,Math.min(17,13*a*.99/w)).toFixed(2)+'px'}
+  if(m1){mt.style.fontSize='13px';m1.style.display='block';m1.style.width='max-content';const w=m1.offsetWidth,a=mt.offsetWidth;m1.style.width='';if(w&&a)mt.style.fontSize=Math.max(WQ.matches?8:10,Math.min(17,13*a*.97/w)).toFixed(2)+'px'}
 }
-addEventListener('resize',fitHeader);if(document.fonts&&document.fonts.addEventListener)document.fonts.addEventListener('loadingdone',fitHeader);
+addEventListener('resize',()=>{fitHeader();fitSoon(true)});
+document.addEventListener('animationend',()=>fitSoon(true),true);/* las animaciones de entrada mueven los elementos: se reajusta cuando terminan */
+WQ.addEventListener('change',()=>{document.body.classList.toggle('onescreen',WQ.matches);if(data&&$('summary'))renderBooking()});
+document.body.classList.toggle('onescreen',WQ.matches);if(document.fonts&&document.fonts.addEventListener)document.fonts.addEventListener('loadingdone',fitHeader);
+/* Pantallas anchas tipo 16:9 (PC): todo en una sola pantalla, de izquierda a derecha y sin scroll. En celular y ventanas angostas queda igual que siempre. */
+function fitCols(reset){
+  const app=$('app'),cols=app&&app.querySelector('.cols,.okwrap');if(!cols)return;
+  const W=app.clientWidth,H=app.clientHeight;if(!W||!H)return;
+  const MIN=.6,MAX=1.4;
+  const fits=s=>{
+    cols.style.width=(W/s)+'px';cols.style.height=(H/s)+'px';cols.style.transform=s===1?'none':'scale('+s+')';
+    for(const c of cols.children)if(c.scrollHeight-c.clientHeight>1)return false;
+    return true
+  };
+  let hi=reset?MAX:Math.min(fitS,MAX),lo=MIN;
+  if(fits(hi))lo=hi;
+  else for(let i=0;i<8;i++){const mid=(lo+hi)/2;if(fits(mid))lo=mid;else hi=mid}
+  fits(lo);fitS=lo;fitHeader()
+}
+let fitT2=0;
+function fitSoon(reset){if(!WQ.matches)return;cancelAnimationFrame(fitT);fitT=requestAnimationFrame(()=>fitCols(reset));clearTimeout(fitT2);fitT2=setTimeout(()=>{fitCols(true);const c=document.querySelector('.cols');if(c)c.classList.add('fit')},700)/* segundo ajuste cuando terminan las animaciones */}
 function renderBooking(){
-  $('app').innerHTML=`
-  <section class="hero"><div class="halo"><div class="mark"><img src="${data.logo?'/api/img/'+data.logo:'/logo.png'}" alt="Logo de ${esc(data.name)}" style="width:100%;height:100%;object-fit:cover;border-radius:50%"></div></div><h1>${titleHTML(data.name)}</h1><div class="metarow"><span class="pole l"></span><p class="meta"><span class="m1">Cortes adaptados a tu estilo · +10 años · Desde 2018</span>${data.address?`<span class="m2">${esc(data.address)}</span>`:''}</p><span class="pole r"></span></div><div class="contact">${data.phone?`<a href="https://wa.me/${esc(String(data.phone).replace(/\D/g,''))}" target="_blank" rel="noopener">${ico('wa')}<span>WhatsApp</span></a>`:''}${data.instagram?`<a href="https://instagram.com/${esc(data.instagram)}" target="_blank" rel="noopener"><span>Instagram</span></a>`:''}${data.address?`<a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(data.address)}" target="_blank" rel="noopener">${ico('pin')}<span>Cómo llegar</span></a>`:''}</div></section>
-  ${(data.promos||[]).map(x=>`<div class="group pad" style="margin-top:14px;text-align:center"><b>${ico('tag')} ${esc(x.title)}</b><div class="sub">${x.kind==='2x1'?'2x1 · dos personas al precio de una':x.pct+'% off'} · hasta el ${esc(x.end.slice(8,10)+'/'+x.end.slice(5,7))}</div>${x.message?`<div class="small" style="margin-top:4px">${esc(x.message)}</div>`:''}</div>`).join('')}
-  <div class="steps"><i class="on"></i><i></i><i></i><i></i></div>
-  <section class="sec"><div class="seg" id="modes"><button data-m="turno"><b>Con turno</b><small>Elegís día y hora</small></button><button data-m="fila"><b>Sin turno</b><small>Orden de llegada · hoy</small></button></div></section>
-  <section class="sec"><div class="sechead"><b>Servicio</b><span>Elegí uno</span></div><div class="group" id="svcs"></div><div id="gst"></div><div id="adds"></div></section>
-  <section class="sec"><div class="sechead"><b>Barbero</b><span>Elegí con quién</span></div><div class="group" id="stf"></div></section>
-  <div id="when"></div>
-  <section class="sec"><div class="sechead"><b>Tus datos</b><span>Solo lo necesario</span></div><div class="group pad" id="dataBox">
+  const wide=WQ.matches;document.body.classList.toggle('onescreen',wide);
+  const hero=`<section class="hero"><div class="halo"><div class="mark"><img src="${data.logo?'/api/img/'+data.logo:'/logo.png'}" alt="Logo de ${esc(data.name)}" style="width:100%;height:100%;object-fit:cover;border-radius:50%"></div></div><h1>${titleHTML(data.name)}</h1><div class="metarow"><span class="pole l"></span><p class="meta"><span class="m1">Cortes adaptados a tu estilo · +10 años · Desde 2018</span>${data.address?`<span class="m2">${esc(data.address)}</span>`:''}</p><span class="pole r"></span></div><div class="contact">${data.phone?`<a href="https://wa.me/${esc(String(data.phone).replace(/\D/g,''))}" target="_blank" rel="noopener">${ico('wa')}<span>WhatsApp</span></a>`:''}${data.instagram?`<a href="https://instagram.com/${esc(data.instagram)}" target="_blank" rel="noopener"><span>Instagram</span></a>`:''}${data.address?`<a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(data.address)}" target="_blank" rel="noopener">${ico('pin')}<span>Cómo llegar</span></a>`:''}</div></section>`;
+  const promos=(data.promos||[]).map(x=>`<div class="group pad" style="margin-top:14px;text-align:center"><b>${ico('tag')} ${esc(x.title)}</b><div class="sub">${x.kind==='2x1'?'2x1 · dos personas al precio de una':x.pct+'% off'} · hasta el ${esc(x.end.slice(8,10)+'/'+x.end.slice(5,7))}</div>${x.message?`<div class="small" style="margin-top:4px">${esc(x.message)}</div>`:''}</div>`).join('');
+  const steps=`<div class="steps"><i class="on"></i><i></i><i></i><i></i></div>`;
+  const modes=`<section class="sec"><div class="seg" id="modes"><button data-m="turno"><b>Con turno</b><small>Elegís día y hora</small></button><button data-m="fila"><b>Sin turno</b><small>Orden de llegada · hoy</small></button></div></section>`;
+  const svc=`<section class="sec" id="secSvc"><div class="sechead"><b>Servicio</b><span>Elegí uno</span></div><div class="group" id="svcs"></div><div id="gst"></div><div id="adds"></div></section>`;
+  const stf=`<section class="sec" id="secStf"><div class="sechead"><b>Barbero</b><span>Elegí con quién</span></div><div class="group" id="stf"></div></section>`;
+  const when=`<div id="when"></div>`;
+  const datos=`<section class="sec" id="secData"><div class="sechead"><b>Tus datos</b><span>Solo lo necesario</span></div><div class="group pad" id="dataBox">
     <div class="field" style="margin-top:0"><label for="name">Nombre</label><input id="name" autocomplete="name" placeholder="Tu nombre" value="${esc(sel.name)}" oninput="sel.name=this.value;updateSummary()"></div>
     <input id="hp" tabindex="-1" autocomplete="off" aria-hidden="true" style="position:absolute;left:-9999px;opacity:0"><div class="field"><label for="wa">WhatsApp</label><div class="pair"><input class="prefix" value="+54 9" disabled aria-label="Prefijo"><input id="wa" inputmode="tel" autocomplete="tel" placeholder="2477 201614" value="${esc(sel.wa?displayWA(sel.wa).replace(/^\+54 9 /,''):'')}" oninput="sel.wa=this.value;updateSummary()"></div><p class="hint">Ingresá tu número local, sin +54 9.</p></div>
     <div class="field"><label for="bd">Cumpleaños (opcional)</label><input id="bd" type="date" value="${esc(sel.bd)}" onchange="sel.bd=this.value"><p class="hint">Para saludarte ese día.</p></div>
-    <div id="formError" class="err"></div></div></section>
-  <div id="prods"></div>
-  <div id="summary"></div>`;
+    <div id="formError" class="err"></div></div></section>`;
+  const prods=`<div id="prods"></div>`,summ=`<div id="summary"></div>`;
+  $('app').innerHTML=wide
+    ?`<div class="cols"><div class="c c1">${hero}${promos}${modes}${prods}${steps}</div><div class="c c2">${svc}</div><div class="c c3">${stf}${when}</div><div class="c c4">${datos}${summ}</div></div>`
+    :`${hero}${promos}${steps}${modes}${svc}${stf}${when}${datos}${prods}${summ}`;
   document.querySelectorAll('#modes button').forEach(b=>b.onclick=()=>{m=b.dataset.m;sel.time=null;refresh()});
-  drawAll();if(ready())refresh();fitHeader();if(document.fonts&&document.fonts.ready)document.fonts.ready.then(fitHeader)
+  drawAll();if(ready())refresh();fitHeader();if(document.fonts&&document.fonts.ready)document.fonts.ready.then(()=>{fitHeader();fitSoon(true)});
+  fitSoon(true)
 }
 const thumb=(p,fb)=>p?`<span class="ic ph"><img src="/api/img/${p}" alt="" loading="lazy" onerror="this.parentNode.className='ic lt';this.replaceWith(Object.assign(document.createElement('i'),{innerHTML:ico('${fb}')}))"></span>`:`<span class="ic lt">${ico(fb)}</span>`;
 function drawAll(){
@@ -71,7 +97,7 @@ function drawAll(){
   $('stf').innerHTML=data.staff.map(s=>`<button class="svc ${sel.staff?.id===s.id?'on':''}" onclick="pick('staff','${s.id}')"><span class="ic lt">${esc(initials(s.name))}</span><span class="main"><b>${esc(s.name)}</b></span><span class="ck">${ico('check')}</span></button>`).join('');
   $('gst').innerHTML=sel.service&&sel.service.twofor?`<label class="group pad" style="display:flex;gap:10px;align-items:center;margin-top:10px"><input type="checkbox" ${sel.guest?'checked':''} onchange="sel.guest=this.checked;sel.time=null;refresh()"><span><b>Vengo con alguien (2x1)</b><br><small>Dos personas por el precio de una</small></span></label>`:'';
   $('adds').innerHTML=addonsFor().length?`<div class="sechead" style="margin-top:14px"><b>Adicionales</b><span>Opcional</span></div><div class="group">${addonsFor().map(a=>`<label class="svc addon ${sel.extras.includes(a.id)?'on':''}" style="cursor:pointer"><input class="sr" type="checkbox" ${sel.extras.includes(a.id)?'checked':''} onchange="toggleEx('${a.id}',this.checked)">${thumb(a.photo,'scissors')}<span class="main"><b>${esc(a.name)}</b><small>+${durationText(a.duration)}</small>${a.description?`<small style="display:block;margin-top:2px">${esc(a.description)}</small>`:''}</span><span class="pr">+${fmt(a.price)}</span><span class="ck sq">${ico('check')}</span></label>`).join('')}</div>`:'';
-  drawProds();drawWhen();updateSummary()
+  drawProds();drawWhen();updateSummary();fitSoon(true)
 }
 const addonsFor=()=>sel.service?(data.addons||[]).filter(a=>!a.addon_to||a.addon_to.split(',').includes(sel.service.id)):[];
 const exSel=()=>addonsFor().filter(a=>sel.extras.includes(a.id));
@@ -103,9 +129,9 @@ async function refresh(){
 const G=()=>sel.guest&&sel.service&&sel.service.twofor?1:0;
 function pick(k,id){if(k==='service'){sel.guest=false;sel.extras=[]}if(k==='service')sel.service=data.services.find(s=>s.id===id);else sel.staff=data.staff.find(s=>s.id===id);sel.time=null;refresh()}
 function pickDate(d){sel.date=d;sel.time=null;refresh()}
-function pickTime(t){sel.time=t;drawWhen();updateSummary();$('summary')?.scrollIntoView({behavior:'smooth',block:'center'})}
+function pickTime(t){sel.time=t;drawWhen();updateSummary();if(!WQ.matches)$('summary')?.scrollIntoView({behavior:'smooth',block:'center'})}
 function updateSummary(){
-  const el=$('summary');if(!el)return;setProgress();
+  const el=$('summary');if(!el)return;setProgress();fitSoon(true);
   const box=$('dataBox');if(box)box.classList.toggle('locked',!ready());
   if(!ready()){el.innerHTML=`<div class="dock"><div class="top"><div><span class="small">Tu resumen</span><b>${sel.service?(sel.staff?'Falta elegir horario':'Falta elegir barbero'):'Elegí servicio y barbero'}</b></div><span class="pr">${sel.service?fmt(tot().price+prodTotal()):''}</span></div></div>`;return}
   const p=dateParts(sel.date||data.today);
@@ -124,10 +150,11 @@ async function book(){
 }
 function showSuccess(r){
   window.scrollTo({top:0});const f=m==='fila';
-  $('app').innerHTML=`<section class="center" style="margin-top:14px"><div class="okmark">${ico('check')}</div><h1 class="title" style="margin:6px 0 4px">${f?'¡Ya estás en la fila!':'¡Listo, '+esc(sel.name.split(/\s+/)[0])+'!'}</h1><p class="sub">${f?'Te atiende':'Tu turno quedó registrado con'} ${esc(r.staff)}.</p>
+  const ok=`<section class="center" style="margin-top:14px"><div class="okmark">${ico('check')}</div><h1 class="title" style="margin:6px 0 4px">${f?'¡Ya estás en la fila!':'¡Listo, '+esc(sel.name.split(/\s+/)[0])+'!'}</h1><p class="sub">${f?'Te atiende':'Tu turno quedó registrado con'} ${esc(r.staff)}.</p>
   <div class="ticket"><div class="trow"><span>Servicio</span><b>${esc(r.service)}</b></div><div class="trow"><span>Barbero</span><b>${esc(r.staff)}</b></div>${f?`<div class="trow"><span>Tu lugar</span><b>N° <span class="cnt" data-to="${r.position}">${r.position}</span></b></div>`:`<div class="trow"><span>Fecha</span><b>${esc(longDate(r.date))}</b></div><div class="trow"><span>Hora</span><b>${esc(r.time)}</b></div>`}${r.products&&r.products.length?`<div class="trow"><span>Productos</span><b>${r.products.map(p=>p.qty+' × '+esc(p.name)).join(', ')}</b></div>`:''}<div class="trow"><span>Total</span><b>${fmt(r.total||r.price||sel.service.price)}</b></div></div>
   <div class="place"><div class="small">Guardá esta pantalla como comprobante.</div>${!f&&data.late&&data.late.mode!=='off'?`<div class="small" style="margin-top:8px">${data.late.mode==='fee'?'Si cancelás con menos de '+data.late.hours+(data.late.hours===1?' hora':' horas')+' de anticipación, se registra un cargo del '+data.late.pct+'% del servicio.':'Si no podés venir, cancelá desde Mis turnos con tiempo.'}</div>`:''}</div>
-  <button class="btn primary" onclick="again()">Reservar otro</button></section>`
+  <button class="btn primary" onclick="again()">Reservar otro</button></section>`;
+  $('app').innerHTML=WQ.matches?`<div class="okwrap">${ok}</div>`:ok;fitSoon(true)
 }
 function again(){sel={service:null,staff:null,date:data.today,time:null,name:'',wa:sel.wa,bd:'',extras:[],products:{}};times=[];qi=null;start()}
 start();
