@@ -16,8 +16,8 @@
   /* Pantalla de "¡Listo!" (comprobante): sin el resumen a la derecha, queda angosta y centrada en vez de estirarse a todo el ancho */
   #app:not(:has(>#summary))>.center{max-width:560px;margin-left:auto;margin-right:auto}
   /* "Mis turnos / cancelar" y el crédito quedan centrados bajo la columna del formulario, no bajo toda la pantalla (390px del resumen + 40px de separación) */
-  html[data-role=client] body.room .wrap:has(#summary)>.hint,
-  html[data-role=client] body.room .wrap:has(#summary)>.credit{margin-right:430px!important}
+  html[data-role=client] body.room:not(.onescreen) .wrap:has(#summary)>.hint,
+  html[data-role=client] body.room:not(.onescreen) .wrap:has(#summary)>.credit{margin-right:430px!important}
   /* la foto de fondo ocupa toda la pantalla (antes era una franja de celular) */
   html[data-theme=dark] body.room .roomfx{-webkit-mask-image:none;mask-image:none}
   html[data-theme=dark] body.room .roomfx img{width:100%}
@@ -59,6 +59,148 @@
   .sheet{max-width:560px;border-radius:24px;border-bottom:1px solid var(--line2);padding-top:22px;padding-bottom:24px}
   .sheet .handle{display:none}
 }
+/* ===== Reserva en UNA sola pantalla (PC 16:9, sin scroll) =====
+   Se activa desde /reservar/ (clase body.onescreen) en ventanas anchas (1180px+), horizontales y de 540px+ de alto.
+   4 tarjetas idénticas y simétricas: marca y modo | servicio | barbero, día y horario | datos y confirmar.
+   Mantiene todo el estilo del celular (fotos, descripciones, tildes, postes, pasos, subtítulos, ayudas, iconos).
+   El script achica o agranda el conjunto solo (entre 66% y 140%) para que entre sin scroll en cualquier pantalla. */
+@media (min-width:1180px){
+  html:has(body.onescreen){zoom:1!important;height:100%;overflow:hidden}
+  html[data-role=client] body.room.onescreen{height:100%;overflow:hidden}
+  html[data-role=client] body.room.onescreen .wrap{max-width:none;height:100dvh;padding:calc(var(--sat) + 8px) 32px 15px;display:grid;grid-template-columns:1fr auto;grid-template-rows:auto minmax(0,1fr) auto;column-gap:24px;align-items:center}
+  html[data-role=client] body.room.onescreen .wrap>.bar{grid-column:1/-1;min-height:28px}
+  html[data-role=client] body.room.onescreen #app{grid-column:1/-1;position:relative;display:block;height:100%;min-height:0;overflow-x:hidden;overflow-y:auto}
+  html[data-role=client] body.room.onescreen .wrap>.hint{grid-column:1;margin:0!important;text-align:left!important}
+  html[data-role=client] body.room.onescreen .wrap>.credit{grid-column:2;margin:0!important}
+  html[data-role=client] body.room.onescreen .credit a{padding:2px 6px;font-size:12.5px}
+  html[data-role=client] body.room.onescreen .credit img{width:24px;height:24px}
+
+  /* grilla: 4 tarjetas iguales, mismos márgenes y huecos */
+  html[data-role=client] body.room.onescreen .cols{position:absolute;left:0;top:0;width:100%;height:100%;transform-origin:0 0;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:22px;counter-reset:st;opacity:0;transition:opacity .25s}
+  html[data-role=client] body.room.onescreen .cols.fit{opacity:1}
+  html[data-role=client] body.room.onescreen .c{display:flex;flex-direction:column;gap:16px;min-width:0;min-height:0;padding:26px 24px;border-radius:28px;overflow-x:hidden;overflow-y:auto;scrollbar-width:thin;background:rgba(12,12,15,.66);border:1px solid var(--line);box-shadow:0 20px 60px rgba(0,0,0,.45);-webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px);transition:border-color .35s,box-shadow .35s,opacity .3s}
+  html[data-role=client] body.room.onescreen .c>*{flex:none}
+  html[data-role=client] body.room.onescreen .c>.sec{margin-top:0}
+  html[data-role=client] body.room.onescreen #when{display:contents}
+  html[data-role=client] body.room.onescreen #prods:empty{display:none}
+  html[data-role=client] body.room.onescreen #secSvc{flex:1;display:flex;flex-direction:column}
+  html[data-role=client] body.room.onescreen #secSvc #adds{margin-top:auto}
+  html[data-role=client] body.room.onescreen .c3:has(#when>.sec+.sec){justify-content:space-between}
+  html[data-role=client] body.room.onescreen #summary{margin-top:auto}
+
+  /* títulos de paso: círculo numerado + título + subtítulo, centrados */
+  html[data-role=client] body.room.onescreen .sechead{display:flex;flex-direction:column;align-items:center;gap:3px;padding:0 0 10px;margin:0;border:0;text-align:center}
+  html[data-role=client] body.room.onescreen .sechead b{display:inline-flex;align-items:center;justify-content:center;font-size:21px}
+  html[data-role=client] body.room.onescreen .sechead span{font-size:12px}
+  html[data-role=client] body.room.onescreen #secSvc>.sechead b,html[data-role=client] body.room.onescreen #secStf>.sechead b,html[data-role=client] body.room.onescreen #when .sechead b,html[data-role=client] body.room.onescreen #secData>.sechead b{counter-increment:st}
+  html[data-role=client] body.room.onescreen #secSvc>.sechead b::before,html[data-role=client] body.room.onescreen #secStf>.sechead b::before,html[data-role=client] body.room.onescreen #when .sechead b::before,html[data-role=client] body.room.onescreen #secData>.sechead b::before{content:counter(st);display:inline-grid;place-items:center;width:23px;height:23px;margin-right:10px;border-radius:50%;background:var(--gold,#d4af5a);color:#17130a;font:600 12.5px/1 var(--font);letter-spacing:0}
+  html[data-role=client] body.room.onescreen #adds .sechead b{font-size:16px}
+
+  /* tarjeta 1: marca sobre la foto de la barbería, con todo su estilo */
+  html[data-role=client] body.room.onescreen .c1{justify-content:space-between;border-color:var(--line2);background:linear-gradient(180deg,rgba(8,8,10,.50) 0%,rgba(8,8,10,.78) 55%,rgba(8,8,10,.94) 100%),url(/img/sala.webp) center/cover}
+  html[data-role=client] body.room.onescreen .c1>.hero{padding:0}
+  html[data-role=client] body.room.onescreen .c1 .halo{width:124px;height:124px;margin:0 auto 14px}
+  html[data-role=client] body.room.onescreen .c1>.group{margin:0!important;background:rgba(255,255,255,.07);border:1px solid var(--line2);box-shadow:none;padding:12px 14px}
+  html[data-role=client] body.room.onescreen .c1 .hero .contact{margin-top:12px;gap:7px}
+  html[data-role=client] body.room.onescreen .contact a{padding:6px 11px;font-size:12.5px}
+  html[data-role=client] body.room.onescreen .c1 .seg{background:rgba(0,0,0,.45);grid-auto-flow:row;grid-auto-columns:auto;gap:4px;padding:4px;border-radius:20px}
+  html[data-role=client] body.room.onescreen .c1 .seg button{display:flex;justify-content:space-between;align-items:baseline;gap:10px;padding:10px 16px;border-radius:16px;text-align:left}
+  html[data-role=client] body.room.onescreen .c1 .seg button b{font-size:15px;white-space:nowrap}
+  html[data-role=client] body.room.onescreen .c1 .seg button small{font-size:12px}
+  html[data-role=client] body.room.onescreen .c1>.steps{margin:0}
+
+  /* tarjeta 2: servicios con foto, descripción y tilde */
+  /* fotos fundidas dentro de la tarjeta: se desvanecen de derecha a izquierda detrás del precio */
+  html[data-role=client] body.room.onescreen .svc{padding:12px 14px;gap:12px}
+  html[data-role=client] body.room.onescreen .svc:has(.ic.ph){position:relative;overflow:hidden;isolation:isolate;min-height:70px}
+  html[data-role=client] body.room.onescreen .svc .ic.ph,html[data-role=client] body.room.onescreen .svc.on .ic.ph{position:absolute;left:auto;right:0;top:0;bottom:0;width:62%;height:auto;border-radius:0;z-index:-1;background:none;outline:none;box-shadow:none;opacity:.42;transition:opacity .35s;-webkit-mask-image:linear-gradient(270deg,#000 0%,rgba(0,0,0,.7) 32%,transparent 100%);mask-image:linear-gradient(270deg,#000 0%,rgba(0,0,0,.7) 32%,transparent 100%)}
+  html[data-role=client] body.room.onescreen .svc .ic.ph img{width:100%;height:100%;object-fit:cover}
+  html[data-role=client] body.room.onescreen .svc.on .ic.ph{opacity:.85}
+  html[data-role=client] body.room.onescreen .svc:hover .ic.ph{opacity:.8}
+  html[data-role=client] body.room.onescreen .svc:has(.ic.ph) .pr,html[data-role=client] body.room.onescreen .svc:has(.ic.ph) .ck{position:relative;z-index:1;text-shadow:0 1px 10px rgba(0,0,0,.85)}
+  html[data-role=client] body.room.onescreen #adds .group,html[data-role=client] body.room.onescreen #svcs{margin:0}
+
+  /* el listado de servicios se estira: sin hueco entre los servicios y "Adicionales" */
+  html[data-role=client] body.room.onescreen #secSvc #svcs{flex:1 0 auto;display:flex;flex-direction:column}
+  html[data-role=client] body.room.onescreen #secSvc #svcs .svc{flex:1 0 auto}
+  html[data-role=client] body.room.onescreen #secSvc #adds{margin-top:16px}
+  html[data-role=client] body.room.onescreen .svc:has(.ic.ph) .ck{background:rgba(0,0,0,.4)}
+  /* tarjeta 3: barberos en dos columnas (el impar ocupa todo el ancho), día y horarios con etiquetas */
+  html[data-role=client] body.room.onescreen #stf{display:grid;grid-template-columns:1fr 1fr;gap:8px;background:none;border:0;box-shadow:none;overflow:visible}
+  html[data-role=client] body.room.onescreen #stf .svc{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:9px 10px;gap:8px;min-width:0}
+  html[data-role=client] body.room.onescreen #stf .svc::before{display:none}
+  html[data-role=client] body.room.onescreen #stf .svc .ic{width:30px;height:30px;font-size:12px;flex:none}
+  html[data-role=client] body.room.onescreen #stf .svc .main b{font-size:14px;white-space:nowrap}
+  html[data-role=client] body.room.onescreen #stf .svc .ck{width:18px;height:18px;flex:none}
+  html[data-role=client] body.room.onescreen #stf .svc.on{background:linear-gradient(90deg,rgba(212,175,90,.2),rgba(212,175,90,.05));box-shadow:0 0 0 1px var(--gold,#d4af5a) inset}
+  html[data-role=client] body.room.onescreen #stf>.svc:last-child:nth-child(odd){grid-column:1/-1}
+  html[data-role=client] body.room.onescreen #when .group.pad{padding:12px;min-height:236px}
+  html[data-role=client] body.room.onescreen #when .tgroup .times{display:flex;flex-wrap:wrap;justify-content:center;gap:7px}
+  html[data-role=client] body.room.onescreen #when .time{flex:0 0 calc((100% - 35px)/6);height:34px;padding:0;min-width:0;font-size:12.5px;letter-spacing:-.01em}
+  html[data-role=client] body.room.onescreen .tgroup .small{text-align:center;margin:0 0 6px}
+  html[data-role=client] body.room.onescreen .tgroup+.tgroup{margin-top:10px}
+  html[data-role=client] body.room.onescreen .time.on{background:var(--gold,#d4af5a);color:#17130a;border-color:transparent;box-shadow:0 4px 18px rgba(212,175,90,.35);font-weight:600}
+
+  /* productos (si el negocio los tiene): van en la tarjeta 1, que es la que tiene lugar de sobra */
+  html[data-role=client] body.room.onescreen #prods .svc{padding:8px 12px;min-height:60px}
+  html[data-role=client] body.room.onescreen #prods .sechead b{font-size:17px}
+  html[data-role=client] body.room.onescreen .c1 #prods .group{background:rgba(255,255,255,.06);border-color:var(--line2)}
+  /* tarjeta 4: datos con ayudas, productos y resumen con iconos al pie */
+  html[data-role=client] body.room.onescreen #dataBox{padding:12px 14px}
+  html[data-role=client] body.room.onescreen .field{margin-top:10px}
+  html[data-role=client] body.room.onescreen .field input:not([type=checkbox]){min-height:44px;font-size:15.5px}
+  html[data-role=client] body.room.onescreen .field .pair .prefix{width:80px;padding:0 6px;text-align:center}
+  html[data-role=client] body.room.onescreen .dock{position:static;margin:0;min-height:150px;padding:16px;border-radius:20px;background:linear-gradient(180deg,rgba(212,175,90,.16),rgba(212,175,90,.05))!important;border:1px solid rgba(212,175,90,.55)}
+  html[data-role=client] body.room.onescreen .dock .btn{white-space:nowrap;letter-spacing:.1em;font-size:13.5px;padding:0 12px}
+
+  /* la tarjeta del paso actual resalta, y la de datos queda apagada hasta que corresponde */
+  html[data-role=client] body.room.onescreen .cols[data-n="0"]>.c2,html[data-role=client] body.room.onescreen .cols[data-n="1"]>.c3,html[data-role=client] body.room.onescreen .cols[data-n="2"]>.c3,html[data-role=client] body.room.onescreen .cols[data-n="3"]>.c4{border-color:rgba(212,175,90,.55);box-shadow:0 20px 60px rgba(0,0,0,.45),0 0 0 1px rgba(212,175,90,.25),0 0 40px rgba(212,175,90,.12)}
+  html[data-role=client] body.room.onescreen .cols[data-n="0"]>.c4,html[data-role=client] body.room.onescreen .cols[data-n="1"]>.c4,html[data-role=client] body.room.onescreen .cols[data-n="2"]>.c4{opacity:.45}
+  @keyframes colin{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+  html[data-role=client] body.room.onescreen .cols.fit>.c{animation:colin .55s cubic-bezier(.2,.8,.2,1) both}
+  html[data-role=client] body.room.onescreen .cols.fit>.c2{animation-delay:.07s}html[data-role=client] body.room.onescreen .cols.fit>.c3{animation-delay:.14s}html[data-role=client] body.room.onescreen .cols.fit>.c4{animation-delay:.21s}
+  html[data-role=client] body.room.onescreen .svc:focus-visible,html[data-role=client] body.room.onescreen .time:focus-visible,html[data-role=client] body.room.onescreen .seg button:focus-visible,html[data-role=client] body.room.onescreen .btn:focus-visible,html[data-role=client] body.room.onescreen .field input:focus-visible{outline:2px solid var(--gold,#d4af5a);outline-offset:2px}
+
+  /* pantalla de "¡Listo!": centrada y ajustada para que tampoco necesite scroll */
+  html[data-role=client] body.room.onescreen .okwrap{position:absolute;left:0;top:0;width:100%;height:100%;transform-origin:0 0;display:flex;flex-direction:column;align-items:center}
+  html[data-role=client] body.room.onescreen .okwrap>.center{flex:0 1 auto;width:560px;max-width:100%;min-height:0;max-height:100%;overflow-y:auto;margin:0 auto}
+
+  html[data-theme=light][data-role=client] body.room.onescreen .svc:has(.ic.ph) .pr,html[data-theme=light][data-role=client] body.room.onescreen .svc:has(.ic.ph) .ck{text-shadow:0 1px 8px rgba(255,255,255,.9)}
+  html[data-theme=light][data-role=client] body.room.onescreen .svc .ic.ph{opacity:.5}
+  html[data-theme=light][data-role=client] body.room.onescreen .svc.on .ic.ph{opacity:.9}
+  html[data-theme=light][data-role=client] body.room.onescreen .svc:has(.ic.ph) .ck{background:rgba(255,255,255,.55)}
+  /* tema claro: el panel de marca sigue oscuro sobre la foto y las tarjetas se vuelven claras */
+  html[data-theme=light][data-role=client] body.room.onescreen .c1{--card:#18181b;--card2:#222226;--card3:#2b2b30;--line:rgba(212,175,90,.16);--line2:rgba(212,175,90,.3);--text:#f4efe4;--sub:#a8a397;--dim:#6f6b62;--red:#d4af5a;--red2:#c19b45;--gold:#d4af5a;--gold2:#ecd08a;--gold-ink:#d9b866;--tint:rgba(212,175,90,.14);--silver:linear-gradient(180deg,#f6e6b4 10%,#c99a2e 100%);color:#f4efe4;color-scheme:dark}
+  html[data-theme=light][data-role=client] body.room.onescreen .c1 .seg button.on{background:rgba(255,255,255,.12);color:#f4efe4;box-shadow:0 0 0 1px rgba(212,175,90,.5) inset}
+  html[data-theme=light][data-role=client] body.room.onescreen .c1 .seg button:not(.on){color:#a8a397}
+  html[data-theme=light][data-role=client] body.room.onescreen .c2,html[data-theme=light][data-role=client] body.room.onescreen .c3,html[data-theme=light][data-role=client] body.room.onescreen .c4{background:rgba(255,255,255,.80);border-color:rgba(43,43,46,.12);box-shadow:0 18px 50px rgba(43,43,46,.13)}
+  html[data-theme=light][data-role=client] body.room.onescreen #stf .svc{background:rgba(43,43,46,.035);border-color:rgba(43,43,46,.10)}
+  html[data-theme=light][data-role=client] body.room.onescreen #stf .svc.on{background:linear-gradient(90deg,rgba(212,175,90,.28),rgba(212,175,90,.08))}
+  html[data-theme=light][data-role=client] body.room.onescreen .dock{background:linear-gradient(180deg,rgba(212,175,90,.22),rgba(212,175,90,.08))!important;border-color:rgba(176,138,48,.6)}
+  html[data-theme=light][data-role=client] body.room.onescreen .time.on{background:var(--gold,#d4af5a);color:#17130a;border-color:transparent}
+}
+
+/* pantallas bajas (notebooks chicas): mismas cosas, un poco más compactas */
+@media (min-width:1180px) and (max-height:720px){
+  html[data-role=client] body.room.onescreen .c{padding:20px 20px;gap:12px}
+  html[data-role=client] body.room.onescreen .sechead{padding-bottom:6px}
+  html[data-role=client] body.room.onescreen .sechead b{font-size:19px}
+  html[data-role=client] body.room.onescreen .svc{padding:8px 12px}
+  html[data-role=client] body.room.onescreen #when .group.pad{min-height:0;padding:10px}
+  html[data-role=client] body.room.onescreen #when .time{height:30px}
+  html[data-role=client] body.room.onescreen .tgroup+.tgroup{margin-top:6px}
+  html[data-role=client] body.room.onescreen .field{margin-top:7px}
+  html[data-role=client] body.room.onescreen .field input:not([type=checkbox]){min-height:40px}
+  html[data-role=client] body.room.onescreen .dock{min-height:0;padding:12px}
+  html[data-role=client] body.room.onescreen .c1 .halo{width:96px;height:96px;margin-bottom:8px}
+  html[data-role=client] body.room.onescreen .c1{gap:8px}
+  html[data-role=client] body.room.onescreen .c1>.group{padding:8px 12px}
+  html[data-role=client] body.room.onescreen .c1 .hero .contact{margin-top:8px}
+  html[data-role=client] body.room.onescreen .c1 .seg button{padding:7px 14px}
+  html[data-role=client] body.room.onescreen #prods .svc{padding:5px 10px;min-height:46px}
+  html[data-role=client] body.room.onescreen #prods .sechead span{display:none}
+}
+
 @media (min-width:1024px) and (hover:hover){
   html[data-role=admin] .tab:not(.active):hover{background:rgba(128,128,128,.12);color:inherit}
   button,.btn,.svc,.time{cursor:pointer}
