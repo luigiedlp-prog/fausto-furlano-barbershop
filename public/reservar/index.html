@@ -25,7 +25,7 @@
 <script>
 let data,m=new URLSearchParams(location.search).get('modo')==='fila'?'fila':'turno',sel={service:null,staff:null,date:null,time:null,name:'',wa:'',bd:'',extras:[],products:{}},times=[],qi=null,rid=0;
 /* Pantallas anchas tipo 16:9 (PC): se arma todo en una sola pantalla, sin scroll */
-const WQ=matchMedia('(min-width:1180px) and (min-aspect-ratio:3/2) and (min-height:540px)');
+const WQ=matchMedia('(min-width:860px) and (min-aspect-ratio:3/2) and (min-height:380px)');
 let fitS=1,fitT=0;
 const keepWA=w=>{try{localStorage.setItem('bp_whatsapp',w)}catch(e){}};
 try{sel.wa=localStorage.getItem('bp_whatsapp')||''}catch(e){}
@@ -55,7 +55,7 @@ document.body.classList.toggle('onescreen',WQ.matches);if(document.fonts&&docume
 function fitCols(reset){
   const app=$('app'),cols=app&&app.querySelector('.cols,.okwrap');if(!cols)return;
   const W=app.clientWidth,H=app.clientHeight;if(!W||!H)return;
-  const MIN=.6,MAX=1.4;
+  const MIN=.4,MAX=1.4;
   const fits=s=>{
     cols.style.width=(W/s)+'px';cols.style.height=(H/s)+'px';cols.style.transform=s===1?'none':'scale('+s+')';
     for(const c of cols.children)if(c.scrollHeight-c.clientHeight>1)return false;
