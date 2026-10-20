@@ -129,7 +129,7 @@ const MIN = 60000, DN = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', '
 const ipOf = req => req.headers.get('cf-connecting-ip') || 'x';
 const norm = s => String(s || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ');
 const WEAK = ['0000', '1111', '2222', '3333', '4444', '5555', '6666', '7777', '8888', '9999', '1234', '4321', '1212'];
-const pinRule = p => { if (!/^\d{4}$/.test(p)) throw err(400, 'El PIN tiene que ser de 4 números'); if (WEAK.includes(p)) throw err(400, 'Elegí un PIN menos obvio'); };
+const pinRule = p => { if (!/^\d{4}$/.test(p)) throw err(400, 'El PIN tiene que ser de 4 números'); };
 const weakPin = async (db, id) => { const s = await db.prepare('SELECT pin_hash FROM bp_staff WHERE id=?').bind(id).first(); for (const p of ['1234', '1111', '2222', '3333', '4444']) if (s && s.pin_hash === await hash(p)) return true; return false; };
 // Límite de intentos: lockCheck corta si ya se llegó al máximo dentro de la ventana; lockHit suma un intento; lockClear lo borra.
 const LIMITS = false; // false = límite de intentos DESACTIVADO (PIN, recuperación, cambio de PIN y anti-spam de reservas). Poné true para reactivarlo.
