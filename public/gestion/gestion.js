@@ -253,12 +253,12 @@ const prodBoxes=cur=>{const P=(M.products||[]).filter(p=>p.active||cur[p.id]);re
 const pqSel=()=>[...document.querySelectorAll('.pq')].map(i=>({id:i.dataset.id,qty:Math.round(+i.value)||0})).filter(x=>x.qty>0);
 const stOpts=sel=>A.team.filter(s=>s.active!==false).map(s=>`<option value="${s.id}" ${s.id===sel?'selected':''}>${esc(s.name)}</option>`).join('');
 function newSheet(){const owner=M.me.role==='owner';
-  sheet(`<h2>Cargar un turno</h2>${owner?`<div class="field"><label>Barbero</label><select id="nb">${stOpts(agStaff!=='all'?agStaff:M.me.id)}</select></div>`:''}
+  sheet(`<h2>Cargar un turno</h2>${owner?`<div class="field"><label>Barbero</label><select id="nbar">${stOpts(agStaff!=='all'?agStaff:M.me.id)}</select></div>`:''}
   <div class="field"><label>Servicio</label><select id="ns" onchange="exCalc()">${svOpts()}</select></div>${exBoxes([])}${prodBoxes({})}
   <div class="field"><label>Día</label><input id="nd" type="date" min="${M.today}" value="${AG?AG.date:M.today}"></div><div class="field"><label>Hora</label><input id="nh" type="time"></div>
   <div class="field"><label>Nombre del cliente</label><input id="nn" autocomplete="off"></div><div class="field"><label>WhatsApp</label><div class="pair"><input class="prefix" value="+54 9" disabled aria-label="Prefijo"><input id="nw" inputmode="tel" placeholder="2477 201614"></div></div>
   <div class="field"><label>Precio</label><input id="np" type="number" inputmode="numeric" value="${(M.services.find(s=>!s.addon)||{}).price||''}"></div><p class="err" id="ne"></p><button class="btn primary" onclick="saveNew()">Guardar turno</button>`)}
-async function saveNew(force){const b={staff:($('nb')||{}).value,service:$('ns').value,extras:exSel(),products:pqSel(),date:$('nd').value,time:$('nh').value,name:$('nn').value,whatsapp:formatWA($('nw').value),price:$('np').value,force:!!force};
+async function saveNew(force){const b={staff:($('nbar')||{}).value,service:$('ns').value,extras:exSel(),products:pqSel(),date:$('nd').value,time:$('nh').value,name:$('nn').value,whatsapp:formatWA($('nw').value),price:$('np').value,force:!!force};
   try{await post('/appt/create',b);closeSheet();AG=null;await load();draw();toast('Turno cargado')}
   catch(e){if(e.data&&e.data.soft){if(await confirmD(e.message+' ¿Cargarlo igual?','Cargar igual'))return saveNew(true)}else $('ne').textContent=e.message}}
 function moveSheet(id){const a=findAppt(id),t=a.kind==='turno',owner=M.me.role==='owner';
