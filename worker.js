@@ -132,8 +132,9 @@ const WEAK = ['0000', '1111', '2222', '3333', '4444', '5555', '6666', '7777', '8
 const pinRule = p => { if (!/^\d{4}$/.test(p)) throw err(400, 'El PIN tiene que ser de 4 números'); if (WEAK.includes(p)) throw err(400, 'Elegí un PIN menos obvio'); };
 const weakPin = async (db, id) => { const s = await db.prepare('SELECT pin_hash FROM bp_staff WHERE id=?').bind(id).first(); for (const p of ['1234', '1111', '2222', '3333', '4444']) if (s && s.pin_hash === await hash(p)) return true; return false; };
 // Límite de intentos: lockCheck corta si ya se llegó al máximo dentro de la ventana; lockHit suma un intento; lockClear lo borra.
-async function lockCheck(db, k, max, win) { const r = await db.prepare('SELECT n,t FROM bp_limits WHERE k=?').bind(k).first(), left = r ? r.t + win - Date.now() : 0; if (r && left > 0 && r.n >= max) throw err(429, `Demasiados intentos. Probá de nuevo en ${Math.ceil(left / MIN)} min.`); }
-async function lockHit(db, k, win) { const r = await db.prepare('SELECT n,t FROM bp_limits WHERE k=?').bind(k).first(); if (!r || Date.now() - r.t >= win) await db.prepare('INSERT OR REPLACE INTO bp_limits(k,n,t) VALUES(?,1,?)').bind(k, Date.now()).run(); else await db.prepare('UPDATE bp_limits SET n=n+1 WHERE k=?').bind(k).run(); }
+const LIMITS = false; // false = límite de intentos DESACTIVADO (PIN, recuperación, cambio de PIN y anti-spam de reservas). Poné true para reactivarlo.
+async function lockCheck(db, k, max, win) { if (!LIMITS) return; const r = await db.prepare('SELECT n,t FROM bp_limits WHERE k=?').bind(k).first(), left = r ? r.t + win - Date.now() : 0; if (r && left > 0 && r.n >= max) throw err(429, `Demasiados intentos. Probá de nuevo en ${Math.ceil(left / MIN)} min.`); }
+async function lockHit(db, k, win) { if (!LIMITS) return; const r = await db.prepare('SELECT n,t FROM bp_limits WHERE k=?').bind(k).first(); if (!r || Date.now() - r.t >= win) await db.prepare('INSERT OR REPLACE INTO bp_limits(k,n,t) VALUES(?,1,?)').bind(k, Date.now()).run(); else await db.prepare('UPDATE bp_limits SET n=n+1 WHERE k=?').bind(k).run(); }
 const lockClear = (db, k) => db.prepare('DELETE FROM bp_limits WHERE k=?').bind(k).run();
 async function spamCheck(req, db, B, kind) {
   if (B.website) throw err(400, 'Solicitud inválida'); // campo trampa: las personas no lo ven
