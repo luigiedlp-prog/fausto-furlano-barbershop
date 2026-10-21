@@ -43,6 +43,7 @@ function ev(a,ag){
   ${a.notes?`<div class="cnote">${ico('book')} ${esc(a.notes)}</div>`:''}<button class="linkbtn" onclick="noteSheet('${a.client_id}','${a.id}')">${a.notes?'Editar nota del cliente':'+ Nota del cliente'}</button>
   ${a.status==='pending'&&a.kind==='turno'?`<a class="btn" style="display:block;text-align:center;margin-top:8px" target="_blank" rel="noopener" href="https://wa.me/${formatWA(a.whatsapp)}?text=${encodeURIComponent('¡Hola '+a.cname.split(' ')[0]+'! Te recordamos tu turno '+(a.date&&a.date!==M.today?'del '+dm(a.date):'de hoy')+' a las '+a.time+'. Si no podés venir, avisanos.')}">Recordarle por WhatsApp</a>`:''}
   ${a.status==='pending'?`<button class="btn" style="display:block;width:100%;margin-top:8px" onclick="moveSheet('${a.id}')">${a.kind==='turno'?'Mover o editar':'Editar'}</button>`:''}
+  ${a.status==='done'&&M.me.role==='owner'&&(a.kind==='turno'||a.kind==='fila')?`<button class="btn" style="display:block;width:100%;margin-top:8px" onclick="fixSheet('${a.id}')">Corregir turno hecho</button>`:''}
   ${a.status==='pending'||a.status==='unrecorded'?`<div class="evacts"><button class="go" onclick="doneSheet('${a.id}')">${ico('check')} Hecho</button><button class="wn" onclick="setSt('${a.id}','no_show')">${ico('noshow')} No asistió</button><button class="bad" onclick="setSt('${a.id}','cancelled')">${ico('x')} Cancelar</button></div>`:''}</div></div>`;
 }
 function vDia(){
@@ -283,6 +284,17 @@ async function saveMove(id,force){const a=findAppt(id),b={id,service:$('ms').val
     else toast('Turno actualizado');
     if(AFF.length)affSheet()}
   catch(e){if(e.data&&e.data.soft){if(await confirmD(e.message+' ¿Guardarlo igual?','Guardar igual'))return saveMove(id,true)}else $('me2').textContent=e.message}}
+function fixSheet(id){const a=findAppt(id),mo=a.client_id==='c_mostrador';
+  sheet(`<h2>Corregir turno hecho</h2><p class="sub">${mo?'Este corte no tiene cliente asignado. Si completás nombre y WhatsApp, se le asigna.':'Cambiá el servicio, el barbero o los datos del cliente.'}</p>
+  <div class="field"><label>Servicio</label><select id="fs" onchange="$('fa').value=(M.services.find(s=>s.id===this.value)||{}).price">${svOpts(a.service_id)}</select></div>
+  <div class="field"><label>Monto cobrado</label><input id="fa" type="number" inputmode="numeric" value="${a.amount!=null?a.amount:a.price}"></div>
+  <div class="field"><label>Barbero</label><select id="fb">${stOpts(a.staff_id||'')}</select></div>
+  <div class="field"><label>Nombre del cliente</label><input id="fn" type="text" maxlength="80" value="${mo?'':esc(a.cname)}"></div>
+  <div class="field"><label>WhatsApp del cliente</label><input id="fw" type="tel" inputmode="tel" value="${mo?'':esc(displayWA(a.whatsapp))}"></div>
+  <p class="hint">Si el WhatsApp ya es de otro cliente, el corte pasa a ese cliente. Si no, se corrigen los datos de este.</p>
+  <p class="err" id="fe"></p><button class="btn primary" onclick="saveFix('${id}')">Guardar cambios</button>`)}
+async function saveFix(id){const a=findAppt(id),b={id,service:$('fs').value,amount:$('fa').value,staff:$('fb').value,name:$('fn').value,whatsapp:$('fw').value};
+  try{const r=await post('/appt/fix',b);closeSheet();AG=null;await load();draw();toast(r.changed?'Turno corregido':'Sin cambios')}catch(e){$('fe').textContent=e.message}}
 function blkSheet(){const owner=M.me.role==='owner';
   sheet(`<h2>Bloquear días u horarios</h2><p class="hint">Sirve para vacaciones, trámites o lo que haga falta. Nadie va a poder reservar en ese lapso.</p>
   ${owner?`<div class="field"><label>Quién</label><select id="bq"><option value="all">Toda la barbería</option>${stOpts('')}</select></div>`:''}
