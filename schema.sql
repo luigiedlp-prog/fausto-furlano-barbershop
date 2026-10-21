@@ -2,7 +2,7 @@
 -- El Worker también lo crea y actualiza solo al arrancar (función init), y carga los datos iniciales.
 -- Si cambiás el esquema en worker.js, volvé a generar este archivo para que no quede desactualizado.
 
-CREATE TABLE IF NOT EXISTS bp_appts (id TEXT PRIMARY KEY,client_id TEXT NOT NULL,staff_id TEXT NOT NULL,service_id TEXT NOT NULL,service_name TEXT NOT NULL,price INTEGER NOT NULL,duration INTEGER NOT NULL,date TEXT NOT NULL,time TEXT NOT NULL DEFAULT '',kind TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'pending',pay TEXT,amount INTEGER NOT NULL DEFAULT 0,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, reminded INTEGER NOT NULL DEFAULT 0, extras TEXT, prod_total INTEGER NOT NULL DEFAULT 0, prod_comm INTEGER NOT NULL DEFAULT 0);
+CREATE TABLE IF NOT EXISTS bp_appts (id TEXT PRIMARY KEY,client_id TEXT NOT NULL,staff_id TEXT NOT NULL,service_id TEXT NOT NULL,service_name TEXT NOT NULL,price INTEGER NOT NULL,duration INTEGER NOT NULL,date TEXT NOT NULL,time TEXT NOT NULL DEFAULT '',kind TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'pending',pay TEXT,amount INTEGER NOT NULL DEFAULT 0,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, reminded INTEGER NOT NULL DEFAULT 0, extras TEXT, prod_total INTEGER NOT NULL DEFAULT 0, prod_comm INTEGER NOT NULL DEFAULT 0, ext_src TEXT, ext_id TEXT, ext_rev INTEGER);
 
 CREATE TABLE IF NOT EXISTS bp_audit (id TEXT PRIMARY KEY,at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,staff_id TEXT,staff_name TEXT,action TEXT NOT NULL,detail TEXT);
 
@@ -64,3 +64,9 @@ CREATE INDEX IF NOT EXISTS bp_fees_pd ON bp_fees(paid_date);
 CREATE INDEX IF NOT EXISTS bp_exp_d ON bp_expenses(date);
 
 CREATE INDEX IF NOT EXISTS bp_pay_d ON bp_payouts(date);
+
+-- Sincronización con el sistema de Santi (v7-sync): un turno externo se identifica por (ext_src, ext_id).
+CREATE UNIQUE INDEX IF NOT EXISTS bp_appts_ext ON bp_appts(ext_src,ext_id) WHERE ext_src IS NOT NULL;
+
+-- Cola de salida hacia el sistema de Santi (v8-sync2). Los triggers los crea el Worker al arrancar.
+CREATE TABLE IF NOT EXISTS bp_sync_out (appt_id TEXT PRIMARY KEY,estado TEXT NOT NULL DEFAULT 'pendiente',intentos INTEGER NOT NULL DEFAULT 0,proximo INTEGER NOT NULL DEFAULT 0,ultimo_error TEXT,t INTEGER NOT NULL DEFAULT 0);

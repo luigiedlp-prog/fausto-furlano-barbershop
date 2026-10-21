@@ -48,7 +48,7 @@ const SCHEMA = [
 
 const NEW_SERVICES = [['s1', 'Corte de cabello', 15000, 20, 'Corte a tu estilo', 'corte', 0], ['s2', 'Barba', 15000, 15, 'Afeitado contemporáneo', 'barba', 0], ['s3', 'Corte y barba', 17000, 20, 'Corte a tu estilo + afeitado contemporáneo', 'barba', 0], ['s4', 'Corte, barba y lavado', 22000, 30, 'Corte + afeitado contemporáneo + lavado', 'lavado', 0], ['s5', 'Servicio completo', 28000, 40, 'Corte, afeitado tradicional con toallas al vapor y lavado', 'afeitado', 0], ['s6', 'Tratamiento facial', 18000, 20, 'Mascarilla con vapor', 'facial', 1]]; // Precios de ejemplo: se cambian desde Gestión
 // Subí este valor cada vez que agregues una tabla, columna, índice o dato inicial en init(): así se vuelve a correr una vez.
-const SCHEMA_V = 'v6-rapido';
+const SCHEMA_V = 'v8-sync2';
 let ready = false;
 async function init(db) {
   if (ready) return;
@@ -57,6 +57,15 @@ async function init(db) {
   await db.batch(SCHEMA.map(s => db.prepare(s)));
   await db.prepare("INSERT OR IGNORE INTO bp_clients(id,name,whatsapp) VALUES('c_mostrador','Venta en mostrador','mostrador')").run();
   await db.prepare('ALTER TABLE bp_appts ADD COLUMN reminded INTEGER NOT NULL DEFAULT 0').run().catch(() => {});
+  // Sincronización con el sistema de Santi: de dónde viene el turno y su id/versión allá.
+  await db.prepare('ALTER TABLE bp_appts ADD COLUMN ext_src TEXT').run().catch(() => {});
+  await db.prepare('ALTER TABLE bp_appts ADD COLUMN ext_id TEXT').run().catch(() => {});
+  await db.prepare('ALTER TABLE bp_appts ADD COLUMN ext_rev INTEGER').run().catch(() => {});
+  await db.prepare('CREATE UNIQUE INDEX IF NOT EXISTS bp_appts_ext ON bp_appts(ext_src,ext_id) WHERE ext_src IS NOT NULL').run().catch(() => {});
+  // Cola de salida hacia el sistema de Santi: todo turno nuevo (o reasignado a alguien) del local; al enviar solo pasan los de Santi.
+  await db.prepare("CREATE TABLE IF NOT EXISTS bp_sync_out (appt_id TEXT PRIMARY KEY,estado TEXT NOT NULL DEFAULT 'pendiente',intentos INTEGER NOT NULL DEFAULT 0,proximo INTEGER NOT NULL DEFAULT 0,ultimo_error TEXT,t INTEGER NOT NULL DEFAULT 0)").run();
+  await db.prepare("CREATE TRIGGER IF NOT EXISTS bp_sync_ai AFTER INSERT ON bp_appts WHEN NEW.kind='turno' AND NEW.ext_src IS NULL AND NEW.staff_id<>'' BEGIN INSERT INTO bp_sync_out(appt_id,t) VALUES(NEW.id,CAST((julianday('now')-2440587.5)*86400000 AS INTEGER)) ON CONFLICT(appt_id) DO UPDATE SET estado='pendiente',intentos=0,proximo=0,ultimo_error=NULL,t=excluded.t; END").run().catch(() => {});
+  await db.prepare("CREATE TRIGGER IF NOT EXISTS bp_sync_au AFTER UPDATE OF staff_id ON bp_appts WHEN NEW.kind='turno' AND NEW.ext_src IS NULL AND NEW.staff_id<>'' AND NEW.staff_id IS NOT OLD.staff_id BEGIN INSERT INTO bp_sync_out(appt_id,t) VALUES(NEW.id,CAST((julianday('now')-2440587.5)*86400000 AS INTEGER)) ON CONFLICT(appt_id) DO UPDATE SET estado='pendiente',intentos=0,proximo=0,ultimo_error=NULL,t=excluded.t; END").run().catch(() => {});
   // Avisos push: los avisos que ya existían se marcan como enviados para no mandar de golpe el historial viejo.
   if (await db.prepare('ALTER TABLE bp_notif ADD COLUMN pushed INTEGER NOT NULL DEFAULT 0').run().then(() => true, () => false)) await db.prepare('UPDATE bp_notif SET pushed=1').run();
   await db.prepare('ALTER TABLE bp_notif ADD COLUMN title TEXT').run().catch(() => {});
@@ -274,7 +283,7 @@ async function attachItems(db, appts) {
   for (const r of (await db.prepare(`SELECT appt_id,product_id,name,qty,price FROM bp_items WHERE appt_id IN (${appts.map(() => '?').join(',')})`).bind(...appts.map(a => a.id)).all()).results) by[r.appt_id].items.push({ product_id: r.product_id, name: r.name, qty: r.qty, price: r.price });
 }
 
-async function slots(db, date, svc, staff) {
+async function slots(db, date, svc, staff, extra = []) {
   const cf0 = await cfg(db), sch = JSON.parse(cf0.schedule), step = [5, 10, 15, 20, 30, 60].includes(+cf0.slot_step) ? +cf0.slot_step : 15, n = now(), dow = new Date(date + 'T12:00:00Z').getUTCDay();
   const busy = (await db.prepare("SELECT time,duration FROM bp_appts WHERE staff_id=? AND date=? AND kind='turno' AND status IN('pending','done')").bind(staff, date).all()).results;
   const out = [], bl = await blocksFor(db, date, staff);
@@ -282,6 +291,7 @@ async function slots(db, date, svc, staff) {
     if (date === n.date && m <= n.min) continue;
     if (busy.some(x => m < tm(x.time) + x.duration && tm(x.time) < m + svc.duration)) continue;
     if (bl.some(b => hits(b, m, svc.duration))) continue;
+    if (extra.some(c => c < m + svc.duration && c + 15 > m)) continue;
     out.push(hm(m));
   }
   return out;
@@ -551,8 +561,161 @@ async function adminData(db, st, n) {
   return { daily, sales: rw('sales'), staff_all, promos: rw('promos'), cash, caja, recurring: rw('recurring'), team, month, fin, expenses: expList, clients, settings: { name: st.name, commission: +st.commission, address: st.address || '', phone: st.phone || '', instagram: st.instagram || '', schedule: JSON.parse(st.schedule || '{}'), book_days: +st.book_days || 3, slot_step: +st.slot_step || 15, logo: st.logo || null, late_mode: ['off', 'fee'].includes(st.late_mode) ? st.late_mode : 'warn', late_hours: +st.late_hours || 1, late_pct: +st.late_pct || 50, pin_max: +st.pin_max || 5, pin_lock: +st.pin_lock || 15, security: { question: st.sec_q || '', set: !!st.sec_a } }, today: n.date, now: n.date + 'T' + hm(n.min) };
 }
 
+
+// ═══════════════ Sincronización con el sistema de Santi (Worker ↔ Worker) ═══════════════
+// Secrets: SYNC_KEY (clave compartida), SYNC_STAFF_ID (id de Santi en bp_staff), SYNC_URL (https://... del Worker de Santi, para avisarle
+// cuando acá se cancela/mueve/cierra un turno suyo). Opcional: SYNC_CONTAR_INGRESOS=1 (los cortes de Santi cuentan como ingreso de la barbería).
+// Sin SYNC_KEY todo esto queda apagado. Para cortar el vínculo: borrar SYNC_KEY o poner SYNC_ACTIVO=0.
+const SYNC_SRC = 'santi';
+const syncOn = env => !!(env && env.SYNC_KEY && String(env.SYNC_KEY).length >= 16 && String(env.SYNC_ACTIVO ?? '1') !== '0');
+async function syncAuth(req, env) { if (!syncOn(env)) return false; const k = req.headers.get('x-sync-key') || ''; return (await hash(k)) === (await hash(String(env.SYNC_KEY))); }
+const slug = s => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
+async function syncStaff(db, env) {
+  const s = env.SYNC_STAFF_ID ? await db.prepare('SELECT id,name FROM bp_staff WHERE id=?').bind(env.SYNC_STAFF_ID).first() : null;
+  if (!s) throw err(503, 'Falta SYNC_STAFF_ID o no existe ese barbero');
+  return s;
+}
+async function syncClient(db, name, wa) {
+  wa = String(wa || '').replace(/\D/g, ''); name = String(name || '').trim().slice(0, 80);
+  if (!name || wa.length < 8) throw err(400, 'Cliente inválido');
+  const c = await db.prepare('SELECT id FROM bp_clients WHERE substr(whatsapp,-10)=?').bind(wa.slice(-10)).first();
+  if (c) return c.id;
+  const id = uid('c'); await db.prepare('INSERT INTO bp_clients(id,name,whatsapp) VALUES(?,?,?)').bind(id, name, wa).run(); return id;
+}
+async function syncService(db, t) {
+  const nm = slug(t.service_name), all = (await db.prepare('SELECT id,name FROM bp_services').all()).results;
+  const hit = all.find(x => slug(x.name) === nm); if (hit) return hit.id;
+  const id = 'sync_' + String(t.service_id || nm).replace(/[^\w-]/g, '').slice(0, 30);
+  await db.prepare('INSERT OR IGNORE INTO bp_services(id,name,price,duration,online,addon) VALUES(?,?,?,?,0,0)').bind(id, String(t.service_name).slice(0, 80), t.price, t.duration).run();
+  return id;
+}
+async function syncUpsert(db, env, ctx, B) {
+  const t = B.turno || {}, c = B.cliente || {}, eid = String(B.external_id || ''), rev = Math.floor(+B.rev);
+  if (!/^[\w-]{1,64}$/.test(eid) || !Number.isFinite(rev)) throw err(400, 'external_id o rev inválido');
+  if (!isDate(t.date) || !isTime(t.time)) throw err(400, 'Fecha u hora inválida');
+  const dur = Math.round(+t.duration), price = Math.round(+t.price);
+  if (!(dur >= 5 && dur <= 600) || !(price >= 0) || !String(t.service_name || '').trim()) throw err(400, 'Servicio inválido');
+  if (!['pending', 'cancelled', 'no_show', 'done'].includes(t.status)) throw err(400, 'Estado inválido');
+  t.duration = dur; t.price = price;
+  const staff = await syncStaff(db, env); let ex = await db.prepare('SELECT * FROM bp_appts WHERE ext_src=? AND ext_id=?').bind(SYNC_SRC, eid).first();
+  if (!ex && B.fausto_id) { // turno cargado acá que Santi acaba de copiar y todavía no quedó vinculado: se vincula, no se duplica
+    ex = await db.prepare('SELECT * FROM bp_appts WHERE id=? AND ext_src IS NULL AND staff_id=?').bind(String(B.fausto_id), staff.id).first();
+    if (ex) await db.prepare('UPDATE bp_appts SET ext_src=?,ext_id=?,ext_rev=NULL WHERE id=?').bind(SYNC_SRC, eid, ex.id).run();
+  }
+  const open = x => ['pending', 'unrecorded'].includes(x);
+  const cname = String(c.name || '').slice(0, 30), fd2 = `${t.date.slice(8)}/${t.date.slice(5, 7)} ${t.time}`;
+  if (!ex) {
+    if (t.status === 'pending' && (await conflicts(db, staff.id, t.date, t.time, dur)).overlap) throw err(409, 'Santi ya tiene un turno en ese horario en la barbería');
+    const cid = await syncClient(db, c.name, c.whatsapp), sid = await syncService(db, t), id = uid('a');
+    const done = t.status === 'done', amt = done && (env.SYNC_CONTAR_INGRESOS === '1' || t.source === 'barberia') ? price : 0;
+    await db.batch([
+      db.prepare("INSERT INTO bp_appts(id,client_id,staff_id,service_id,service_name,price,duration,date,time,kind,status,pay,amount,ext_src,ext_id,ext_rev) VALUES(?,?,?,?,?,?,?,?,?,'turno',?,?,?,?,?,?)")
+        .bind(id, cid, staff.id, sid, String(t.service_name).slice(0, 80), price, dur, t.date, t.time, t.status, done && amt ? 'efectivo' : null, amt, SYNC_SRC, eid, rev),
+      ...(done ? [db.prepare('UPDATE bp_clients SET visits=visits+1,total_spent=total_spent+?,last_visit=? WHERE id=?').bind(amt, t.date, cid)] : []),
+      ...(t.status === 'no_show' ? [db.prepare('UPDATE bp_clients SET no_shows=no_shows+1 WHERE id=?').bind(cid)] : [])]);
+    if (t.status === 'pending') ctx.waitUntil(notifyStaff(env, db, staff.id, `Turno nuevo (web de Santi): ${cname} · ${fd2}`));
+    return { ok: true, id, created: true };
+  }
+  if (ex.ext_rev != null && ex.ext_rev >= rev) return { ok: true, skipped: 'version vieja' };
+  const bump = () => db.prepare('UPDATE bp_appts SET ext_rev=? WHERE id=?').bind(rev, ex.id);
+  if (!open(ex.status)) { await bump().run(); return { ok: true, skipped: 'turno ya cerrado' }; }
+  if (t.status === 'pending') {
+    const changed = ex.date !== t.date || ex.time !== t.time || ex.duration !== dur;
+    if (changed && (await conflicts(db, ex.staff_id, t.date, t.time, dur, ex.id)).overlap) throw err(409, 'Santi ya tiene un turno en ese horario en la barbería');
+    await db.prepare("UPDATE bp_appts SET date=?,time=?,duration=?,price=?,service_name=?,status='pending',reminded=CASE WHEN ?=1 THEN 0 ELSE reminded END,ext_rev=? WHERE id=?")
+      .bind(t.date, t.time, dur, price, String(t.service_name).slice(0, 80), changed ? 1 : 0, rev, ex.id).run();
+    if (changed) ctx.waitUntil(notifyStaff(env, db, ex.staff_id, `Turno de Santi reprogramado: ${cname} · ${fd2}`));
+    return { ok: true, updated: true };
+  }
+  if (t.status === 'cancelled') {
+    await db.batch([db.prepare("UPDATE bp_appts SET status='cancelled',ext_rev=? WHERE id=?").bind(rev, ex.id), ...releaseDeadStmts(db)]);
+    ctx.waitUntil(notifyStaff(env, db, ex.staff_id, `Turno de Santi cancelado: ${cname} · ${fd2}`, 'cancel'));
+    return { ok: true, cancelled: true };
+  }
+  if (t.status === 'no_show') {
+    await db.batch([db.prepare("UPDATE bp_appts SET status='no_show',ext_rev=? WHERE id=?").bind(rev, ex.id), db.prepare('UPDATE bp_clients SET no_shows=no_shows+1 WHERE id=?').bind(ex.client_id), ...releaseDeadStmts(db)]);
+    return { ok: true, no_show: true };
+  }
+  const amt = env.SYNC_CONTAR_INGRESOS === '1' || t.source === 'barberia' ? price : 0;
+  await db.batch([db.prepare("UPDATE bp_appts SET status='done',pay=?,amount=?,price=?,ext_rev=? WHERE id=?").bind(amt ? 'efectivo' : null, amt, price, rev, ex.id),
+    db.prepare('UPDATE bp_clients SET visits=visits+1,total_spent=total_spent+?,last_visit=? WHERE id=?').bind(amt, ex.date, ex.client_id)]);
+  return { ok: true, done: true };
+}
+async function syncBusy(db, env, u, n) {
+  const staff = await syncStaff(db, env), from = isDate(u.searchParams.get('from')) ? u.searchParams.get('from') : n.date;
+  const lim = new Date(from + 'T12:00:00Z'); lim.setUTCDate(lim.getUTCDate() + 31);
+  let to = isDate(u.searchParams.get('to')) ? u.searchParams.get('to') : from; if (to > lim.toISOString().slice(0, 10)) to = lim.toISOString().slice(0, 10);
+  const busy = [];
+  for (const r of (await db.prepare("SELECT date,time,duration FROM bp_appts WHERE staff_id=? AND kind='turno' AND status IN('pending','done') AND date BETWEEN ? AND ? AND (ext_src IS NULL OR ext_src!=?)").bind(staff.id, from, to, SYNC_SRC).all()).results)
+    busy.push({ date: r.date, start: r.time, end: hm(Math.min(1440, tm(r.time) + r.duration)), kind: 'turno' });
+  for (const b of (await db.prepare('SELECT d1,d2,t1,t2 FROM bp_blocks WHERE d2>=? AND d1<=? AND (staff_id IS NULL OR staff_id=?)').bind(from, to, staff.id).all()).results)
+    for (let d = new Date((b.d1 > from ? b.d1 : from) + 'T12:00:00Z'), e = b.d2 < to ? b.d2 : to; d.toISOString().slice(0, 10) <= e; d.setUTCDate(d.getUTCDate() + 1))
+      busy.push({ date: d.toISOString().slice(0, 10), start: b.t1 || '00:00', end: b.t1 ? b.t2 : '24:00', kind: 'bloqueo' });
+  return { ok: true, busy };
+}
+async function syncRoute(req, db, env, ctx, u, p, B, n) {
+  if (!(await syncAuth(req, env))) throw err(401, 'Clave de sincronización inválida o sync apagado');
+  if (p === '/api/sync/ping') { const s = await syncStaff(db, env); return J(200, { ok: true, staff: s }); }
+  if (p === '/api/sync/ocupado' && req.method === 'GET') return J(200, await syncBusy(db, env, u, n));
+  if (p === '/api/sync/turno' && req.method === 'POST') return J(200, await syncUpsert(db, env, ctx, B));
+  throw err(404, 'No encontrado');
+}
+
+// Turnos cargados en la barbería (web o panel) para Santi → se copian a su sistema (cliente, precio, horario, aviso). Se envía el turno
+// COMPLETO; si el sistema de Santi no responde queda en bp_sync_out y se reintenta (cron + cada movimiento).
+async function syncSendOut(env, db, r) {
+  const ok = () => db.prepare("UPDATE bp_sync_out SET estado='ok',ultimo_error=NULL WHERE appt_id=?").bind(r.appt_id).run();
+  const a = await db.prepare('SELECT a.*,c.name cname,c.whatsapp cwa FROM bp_appts a JOIN bp_clients c ON c.id=a.client_id WHERE a.id=?').bind(r.appt_id).first();
+  if (!a || a.kind !== 'turno' || a.ext_src || a.staff_id !== env.SYNC_STAFF_ID || a.status !== 'pending') return ok();
+  const items = (await db.prepare('SELECT name,qty FROM bp_items WHERE appt_id=?').bind(a.id).all()).results;
+  const body = { op: 'create', fausto_id: a.id, cliente: { name: a.cname, whatsapp: a.cwa },
+    turno: { date: a.date, time: a.time, duration: a.duration, service_id: a.service_id, service_name: a.service_name, price: a.price, notes: items.length ? 'Productos: ' + items.map(i => `${i.name} x${i.qty}`).join(', ') : '', created_at: a.created_at } };
+  const fail = async (status, msg, retry) => {
+    const n = (r.intentos || 0) + 1, wait = Math.min(30 * 60000, 60000 * 2 ** Math.min(n, 5));
+    await db.prepare('UPDATE bp_sync_out SET estado=?,intentos=?,proximo=?,ultimo_error=? WHERE appt_id=?').bind(retry ? 'pendiente' : 'error', n, Date.now() + wait, String(msg).slice(0, 200), r.appt_id).run();
+    if (!retry || n === 5) await notifyStaff(env, db, a.staff_id, `No se pudo cargar en el sistema de Santi el turno de ${String(a.cname).slice(0, 30)} (${a.date.slice(8)}/${a.date.slice(5, 7)} ${a.time}): ${String(msg).slice(0, 120)}`, 'cancel');
+  };
+  let res, j = {};
+  try {
+    res = await fetch(String(env.SYNC_URL).replace(/\/+$/, '') + '/api/sync/inbound', { method: 'POST', headers: { 'content-type': 'application/json', 'x-sync-key': String(env.SYNC_KEY) }, body: JSON.stringify(body), signal: AbortSignal.timeout(4000) });
+    j = await res.json().catch(() => ({}));
+  } catch (e) { return fail(0, 'Sin conexión con el sistema de Santi', true); }
+  if (res.ok && j.id) { await db.batch([db.prepare('UPDATE bp_appts SET ext_src=?,ext_id=?,ext_rev=0 WHERE id=? AND ext_src IS NULL').bind(SYNC_SRC, String(j.id), a.id), db.prepare("UPDATE bp_sync_out SET estado='ok',ultimo_error=NULL WHERE appt_id=?").bind(r.appt_id)]); return; }
+  return fail(res.status, j.error || 'Error ' + res.status, res.status >= 500 || [401, 403, 408, 429].includes(res.status));
+}
+async function syncFlushOut(env, db, limit = 6) {
+  if (!syncOn(env) || !env.SYNC_URL || !env.SYNC_STAFF_ID) return 0;
+  const rows = (await db.prepare("SELECT * FROM bp_sync_out WHERE estado='pendiente' AND proximo<=? ORDER BY t LIMIT ?").bind(Date.now(), limit).all()).results;
+  for (const r of rows) await syncSendOut(env, db, r).catch(e => console.error('SYNC_OUT_ERROR', String(e?.message || e)));
+  await db.prepare("DELETE FROM bp_sync_out WHERE estado='ok' AND t<?").bind(Date.now() - 30 * 864e5).run();
+  return rows.length;
+}
+// Horarios que Santi ya tiene ocupados en su sistema (turnos propios + bloqueos), en minutos del día. Si no responde, no bloquea nada.
+const sbCache = new Map();
+async function santiExtra(env, date, staffId) {
+  if (!syncOn(env) || !env.SYNC_URL || !staffId || staffId !== env.SYNC_STAFF_ID) return [];
+  const hit = sbCache.get(date); if (hit && Date.now() - hit.t < 15000) return hit.v;
+  try {
+    const r = await fetch(`${String(env.SYNC_URL).replace(/\/+$/, '')}/api/sync/ocupado?from=${date}&to=${date}`, { headers: { 'x-sync-key': String(env.SYNC_KEY) }, signal: AbortSignal.timeout(2500) });
+    if (!r.ok) return [];
+    const v = ((await r.json()).cells || []).filter(c => c.date === date).map(c => tm(c.time)); sbCache.set(date, { t: Date.now(), v }); return v;
+  } catch (e) { return []; }
+}
+// Avisa al sistema de Santi ANTES de cambiar acá un turno que vino de él. Si no hay SYNC_URL (vínculo cortado), el cambio es solo local.
+async function guardSanti(env, a, op, data = {}) {
+  if (!a || a.ext_src !== SYNC_SRC || !syncOn(env) || !env.SYNC_URL) return;
+  let r, j = {};
+  try {
+    r = await fetch(String(env.SYNC_URL).replace(/\/+$/, '') + '/api/sync/inbound', { method: 'POST', headers: { 'content-type': 'application/json', 'x-sync-key': String(env.SYNC_KEY) }, body: JSON.stringify({ op, external_id: a.ext_id, ...data }), signal: AbortSignal.timeout(4000) });
+    j = await r.json().catch(() => ({}));
+  } catch (e) { throw err(502, 'No se pudo avisar al sistema de Santi. Probá de nuevo en un momento.'); }
+  if (r.ok || r.status === 404) return;
+  throw err(r.status === 409 ? 409 : 502, r.status === 409 ? (j.error || 'Ese cambio choca con la agenda de Santi') : 'No se pudo avisar al sistema de Santi. Probá de nuevo en un momento.');
+}
+
 async function route(req, db, u, p, env, ctx) {
   const B = req.method === 'POST' ? await req.json().catch(() => ({})) : {}, n = now();
+  if (p.startsWith('/api/sync/')) return syncRoute(req, db, env, ctx, u, p, B, n);
   if (p === '/api/public') {
     const t = n.date + 'T' + hm(n.min);
     if (u.searchParams.get('lite')) { // login de Gestión: solo nombre, logo y equipo
@@ -573,13 +736,13 @@ async function route(req, db, u, p, env, ctx) {
   }
   if (p === '/api/availability') {
     const d = u.searchParams.get('date') || ''; await dateOk(db, d);
-    return J(200, { times: await slots(db, d, await pubSvc(db, u.searchParams.get('service'), u.searchParams.get('guest') === '1', (u.searchParams.get('extras') || '').split(',').filter(Boolean)), u.searchParams.get('staff')) });
+    return J(200, { times: await slots(db, d, await pubSvc(db, u.searchParams.get('service'), u.searchParams.get('guest') === '1', (u.searchParams.get('extras') || '').split(',').filter(Boolean)), u.searchParams.get('staff'), await santiExtra(env, d, u.searchParams.get('staff'))) });
   }
   if (p === '/api/queue-info') return J(200, await queueInfo(db));
   if (p === '/api/book' && req.method === 'POST') {
     await spamCheck(req, db, B, 'turno'); await dateOk(db, B.date);
     const s = await pubSvc(db, B.service, !!B.guest, B.extras), st = await staffOk(db, B.staff);
-    if (!(await slots(db, B.date, s, st.id)).includes(B.time)) throw err(409, 'Ese horario ya no está disponible');
+    if (!(await slots(db, B.date, s, st.id, await santiExtra(env, B.date, st.id))).includes(B.time)) throw err(409, 'Ese horario ya no está disponible');
     const cid = await client(db, B.name, B.whatsapp, B.birthday), id = uid('a');
     const pl = await planItems(db, B.products, []);
     try { await db.batch([db.prepare("INSERT INTO bp_appts(id,client_id,staff_id,service_id,service_name,price,duration,date,time,kind,extras) VALUES(?,?,?,?,?,?,?,?,?,'turno',?)").bind(id, cid, st.id, s.id, s.name, s.price, s.duration, B.date, B.time, exJson(s)), ...itemStmts(db, id, pl.rows)]); } catch (e) { await giveBack(db, pl.rows); throw e; }
@@ -647,11 +810,12 @@ async function route(req, db, u, p, env, ctx) {
   }
   if (p === '/api/my-cancel' && req.method === 'POST') {
     const w = String(B.wa || '').replace(/\D/g, '').slice(-10);
-    const a = await db.prepare("SELECT a.id,a.staff_id,a.client_id,a.price,a.date,a.time FROM bp_appts a JOIN bp_clients c ON c.id=a.client_id WHERE a.id=? AND substr(c.whatsapp,-10)=? AND a.kind='turno' AND a.status='pending'").bind(B.id, w).first();
+    const a = await db.prepare("SELECT a.id,a.staff_id,a.client_id,a.price,a.date,a.time,a.ext_src,a.ext_id FROM bp_appts a JOIN bp_clients c ON c.id=a.client_id WHERE a.id=? AND substr(c.whatsapp,-10)=? AND a.kind='turno' AND a.status='pending'").bind(B.id, w).first();
     if (!a) throw err(404, 'Turno no encontrado');
     const cf = await cfg(db), mode = ['off', 'fee'].includes(cf.late_mode) ? cf.late_mode : 'warn', hrs = +cf.late_hours || 1, pct = +cf.late_pct || 50;
     const mins = (Date.parse(a.date + 'T00:00:00Z') - Date.parse(n.date + 'T00:00:00Z')) / 60000 + tm(a.time) - n.min, late = mode !== 'off' && mins < hrs * 60, fee = late && mode === 'fee' ? Math.round(a.price * pct / 100) : 0;
     if (late && !B.confirm) throw Object.assign(err(409, `${hrs === 1 ? 'Falta menos de 1 hora' : `Faltan menos de ${hrs} horas`} para tu turno. ` + (fee ? `Si lo cancelás ahora se registra una cancelación tardía de ${money(fee)} (${pct}% del servicio), que se cobra en tu próxima visita.` : 'Avisanos con más tiempo la próxima vez.')), { late: true, fee });
+    await guardSanti(env, a, 'cancel', { late: late ? 1 : 0 });
     await db.prepare("UPDATE bp_appts SET status='cancelled' WHERE id=?").bind(a.id).run(); await releaseDead(db);
     if (fee) await db.prepare('INSERT INTO bp_fees(id,client_id,appt_id,amount,date) VALUES(?,?,?,?,?)').bind(uid('f'), a.client_id, a.id, fee, n.date).run();
     ctx.waitUntil(notifyStaff(env, db, a.staff_id, `Turno cancelado${late ? ' a último momento' : ''}: ${a.date.slice(8)}/${a.date.slice(5, 7)} ${a.time}${fee ? ' · Cobrar ' + money(fee) : ''}`, 'cancel'));
@@ -669,6 +833,7 @@ async function route(req, db, u, p, env, ctx) {
     if (a.kind === 'fila') { if (me.role === 'owner') { if (B.staff) who = (await staffOk(db, B.staff)).id; } else if (!who) who = me.id; if (!who) throw err(400, 'Elegí de quién fue el corte'); }
     if (B.serviceId && B.serviceId !== sid) { const s = await svcOf(db, B.serviceId, false); sid = s.id; sn = s.name; pr = s.price; du = s.duration; exs = null; }
     const amt = Number.isFinite(+B.amount) && B.amount !== '' && +B.amount >= 0 ? Math.round(+B.amount) : pr;
+    await guardSanti(env, a, 'done', { amount: amt });
     if (a.status === 'unrecorded') await holdBack(db, a.id);
     const pt = await db.prepare('SELECT COALESCE(SUM(qty*price),0) t,COALESCE(SUM(ROUND(qty*price*comm_pct/100.0)),0) c FROM bp_items WHERE appt_id=?').bind(a.id).first();
     await db.batch([
@@ -678,6 +843,7 @@ async function route(req, db, u, p, env, ctx) {
   }
   if (p === '/api/appt/status' && req.method === 'POST') {
     const a = await mine(db, me, B.id), s = B.status === 'no_show' ? 'no_show' : 'cancelled';
+    await guardSanti(env, a, s === 'no_show' ? 'no_show' : 'cancel');
     await db.batch([db.prepare('UPDATE bp_appts SET status=? WHERE id=?').bind(s, a.id), ...(s === 'no_show' ? [db.prepare('UPDATE bp_clients SET no_shows=no_shows+1 WHERE id=?').bind(a.client_id)] : [])]);
     if (s === 'cancelled' || s === 'no_show') await releaseDead(db);
     if (s === 'cancelled' && a.kind === 'turno') ctx.waitUntil((async () => notifyClient(env, db, (await db.prepare('SELECT whatsapp FROM bp_clients WHERE id=?').bind(a.client_id).first())?.whatsapp, 'Turno cancelado', `Se canceló tu turno del ${fd(a.date)} a las ${a.time}. Escribinos para reprogramarlo.`))());
@@ -764,6 +930,10 @@ async function route(req, db, u, p, env, ctx) {
       if (date !== a.date || time !== a.time || sid !== a.staff_id || sv.duration !== a.duration) slotRules(await conflicts(db, sid, date, time, sv.duration, a.id), B.force);
     }
     const moved = a.kind === 'turno' && (date !== a.date || time !== a.time || sid !== a.staff_id);
+    if (moved && a.ext_src === SYNC_SRC) {
+      if (sid !== a.staff_id) throw err(409, 'Este turno viene de la agenda de Santi: no se puede pasar a otro barbero.');
+      await guardSanti(env, a, 'move', { date, time, duration: sv.duration });
+    }
     let pl = null;
     if (Array.isArray(B.products)) pl = await planItems(db, B.products, (await db.prepare('SELECT * FROM bp_items WHERE appt_id=?').bind(a.id).all()).results);
     await db.prepare('UPDATE bp_appts SET staff_id=?,service_id=?,service_name=?,price=?,duration=?,date=?,time=?,extras=?,reminded=0 WHERE id=?').bind(sid, sv.id, sv.name, sv.price, sv.duration, date, time, exs, a.id).run();
@@ -1098,7 +1268,7 @@ export default {
     if (!p.startsWith('/api/')) return env.ASSETS.fetch(req);
     if (/^\/api\/img\/static-[a-z]+$/.test(p)) return new Response(null, { status: 302, headers: { location: u.origin + '/img/' + p.slice(16) + '.webp', 'cache-control': 'public, max-age=86400' } });
     if (!env.DB) return J(500, { error: 'Falta el binding D1 llamado DB.' });
-    try { await init(env.DB); return await route(req, env.DB, u, p, env, ctx); }
+    try { await init(env.DB); const res = await route(req, env.DB, u, p, env, ctx); if (req.method === 'POST' && p !== '/api/sync/turno' && syncOn(env) && env.SYNC_URL) ctx.waitUntil(syncFlushOut(env, env.DB).catch(e => console.error('SYNC_OUT_ERROR', String(e?.message || e)))); return res; }
     catch (e) { return J(e.status || 400, { error: e.message, ...(e.soft ? { soft: true } : {}), ...(e.late ? { late: true, fee: e.fee } : {}) }); }
   },
   // Cron (wrangler.toml): recuerda por push los turnos de la próxima hora (al cliente, a su barbero y a los dueños) y reintenta los avisos pendientes.
@@ -1121,6 +1291,7 @@ export default {
         await pushToRef(env, env.DB, 'client', a.w, { title: 'Tu turno', body: `Hoy a las ${a.time} con ${a.staff}. Si no podés venir, cancelalo desde la app.`, url: '/reservar/mis-turnos.html', tag: 'cr_' + a.id }, 1800);
         await env.DB.prepare('UPDATE bp_appts SET reminded=1 WHERE id=?').bind(a.id).run();
       }
+      await syncFlushOut(env, env.DB).catch(e => console.error('SYNC_OUT_ERROR', String(e?.message || e)));
       await flushPush(env);
     })());
   },
