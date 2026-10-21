@@ -8,11 +8,11 @@ const sec=(t,s,b)=>`<section class="sec"><div class="sechead"><b>${t}</b><span>$
 $('miniLogo').innerHTML=`<img src="/logo.png" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`;$('outBtn').innerHTML=ico('out');$('bellBtn').innerHTML=ico('bell')+'<span class="nbadge hidden" id="nb"></span>';
 const badge=n=>{const b=$('nb');if(!b)return;b.textContent=n>9?'9+':n;b.classList.toggle('hidden',!n)};
 
-async function load(){M=await api('/me');A=M.me.role==='owner'?await api('/admin'):null}
+async function load(){const r=await api('/boot');A=r.admin||null;delete r.admin;M=r} // una sola petición trae todo (antes: /me y después /admin)
 async function boot(){try{await load();draw();PUSH.init(true)}catch(e){if(e.status===401)login();else $('app').innerHTML=`<div class="group pad"><p class="err">${esc(e.message)}</p></div>`}}
 async function login(){
   $('tabbar').classList.add('hidden');$('outBtn').classList.add('hidden');$('bellBtn').classList.add('hidden');$('bn').textContent='Gestión';
-  const p=await api('/public');
+  const p=await api('/public?lite=1');
   $('app').innerHTML=`<section class="hero"><div class="halo"><div class="mark"><img src="${p.logo?'/api/img/'+p.logo:'/logo.png'}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%"></div></div><h1>${esc(p.name)}</h1><p>Acceso del equipo</p></section>
   <div class="group pad" style="margin-top:18px"><div class="field" style="margin-top:0"><label for="ls">¿Quién sos?</label><select id="ls">${p.staff.map(s=>`<option value="${s.id}">${esc(s.name)}</option>`).join('')}</select></div>
   <div class="field"><label for="lp">PIN</label><input id="lp" class="pin" type="password" inputmode="numeric" maxlength="4" autocomplete="off"></div><p class="err" id="le"></p><button class="btn primary" onclick="doLogin()">Entrar</button><button class="btn" style="margin-top:10px;width:100%" onclick="forgot()">Olvidé mi PIN</button></div>`;
@@ -337,7 +337,7 @@ function feePaid(cid){sheet(`<h2>Registrar cobro</h2><p class="sub">El cliente p
 async function feeDo(cid){try{await post('/fees/paid',{client:cid,pay:document.querySelector('#dp .on').dataset.v});closeSheet();AG=null;await load();draw();toast('Cobro registrado')}catch(e){const x=$('fe');if(x)x.textContent=e.message}}
 const logoDraw=()=>{const l=A&&A.settings.logo,p=$('lgp');if(!p)return;p.innerHTML=l?`<img src="/api/img/${l}" alt="" style="width:84px;height:84px;object-fit:cover;border-radius:50%;margin-bottom:8px">`:'';$('lgr').style.display=l?'inline-block':'none'};
 async function logoPick(inp){const f=inp.files[0];if(!f)return;try{$('se').textContent='Subiendo logo…';const r=await post('/admin/image',{data:await shrink(f,512,true)});await logoSet(r.id)}catch(e){$('se').textContent=e.message}}
-async function logoSet(id){try{await post('/admin/logo',{image:id});await load();A=await api('/admin');$('se')&&($('se').textContent='');logoDraw();draw()}catch(e){$('se')&&($('se').textContent=e.message)}}
+async function logoSet(id){try{await post('/admin/logo',{image:id});await load();$('se')&&($('se').textContent='');logoDraw();draw()}catch(e){$('se')&&($('se').textContent=e.message)}}
 function chart14(){const D=A.daily||[],mx=Math.max(1,...D.map(x=>x.t));return `<div style="display:flex;align-items:flex-end;gap:4px;height:110px">${D.map(x=>`<div style="flex:1;display:flex;flex-direction:column;justify-content:flex-end;height:100%" title="${esc(dm(x.d))}: ${fmt(x.t)}"><div style="height:${Math.max(x.t?4:1,Math.round(x.t*100/mx))}%;background:${x.d===M.today?'var(--gold,#d4af5a)':'rgba(212,175,90,.45)'};border-radius:4px 4px 0 0"></div></div>`).join('')}</div><div style="display:flex;gap:4px;margin-top:4px">${D.map(x=>`<small style="flex:1;text-align:center;font-size:9px;opacity:.7">${x.d.slice(8)}</small>`).join('')}</div><div class="hrow" style="margin-top:8px"><span>Total de los 14 días</span><b>${fmt(D.reduce((t,x)=>t+x.t,0))}</b></div>`}
 
 /* ---- Resumen del día en imagen ---- */
@@ -382,7 +382,7 @@ function secSheet(){const S=A.settings;sheet(`<h2>Pregunta de seguridad</h2><p c
 async function saveSec(){try{await post('/admin/security',{question:$('sq').value,answer:$('sa2').value,pin_max:$('sx').value,pin_lock:$('sl').value});closeSheet();await load();draw();toast('Seguridad guardada')}catch(e){$('sec').textContent=e.message}}
 function rstSheet(){const b=A.team.filter(s=>s.role!=='owner'&&s.active!==false);sheet(`<h2>Restablecer PIN</h2><div class="field"><label>Barbero</label><select id="rs">${b.map(s=>`<option value="${s.id}">${esc(s.name)}</option>`).join('')}</select></div><div class="field"><label>PIN nuevo (4 números)</label><input id="rn" type="password" inputmode="numeric" maxlength="4" autocomplete="off"></div><p class="err" id="re2"></p><button class="btn primary" onclick="saveRst()">Guardar</button>`)}
 async function saveRst(){try{await post('/admin/staff-pin',{staff:$('rs').value,pin:$('rn').value});closeSheet();toast('PIN restablecido. Avisale al barbero')}catch(e){$('re2').textContent=e.message}}
-async function forgot(){const p=await api('/public'),me=p.staff.find(s=>s.id===$('ls').value);
+async function forgot(){const p=await api('/public?lite=1'),me=p.staff.find(s=>s.id===$('ls').value);
   if(!me||me.role!=='owner'){alertD('Pedile al dueño que te restablezca el PIN desde Ajustes → Seguridad.','Olvidé mi PIN');return}
   const r=await api('/recover-info');
   if(!r.question){alertD('Todavía no hay una pregunta de seguridad configurada, así que el PIN no se puede recuperar desde acá.','Recuperar PIN');return}
