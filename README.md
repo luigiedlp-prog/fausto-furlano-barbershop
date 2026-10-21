@@ -8,7 +8,7 @@ Sistema de turnos y gestión para Fausto Furlano Buti Barber Shop (dueño + 4 ba
 - **Equipo y dueños:** `/gestion/` (con PIN, pensado para el celular)
 
 ## Qué incluye (Fase 1)
-Turnos y fila por orden de llegada (el cliente elige barbero y servicio) · panel de cada barbero (Mi día, Hecho / No asistió / Cancelar) ·
+Turnos y fila por orden de llegada (con turno el cliente elige barbero; en la fila elige solo el servicio y el barbero se indica al cerrar el corte) · panel de cada barbero (Mi día, Hecho / No asistió / Cancelar) ·
 comisión automática por día, semana y mes · panel del dueño (equipo, clientes, finanzas, gastos) · aviso cuando un barbero
 tiene un turno cerca de la fila. El plan completo está en `ROADMAP.md`.
 
@@ -28,6 +28,16 @@ Datos de ejemplo que vienen cargados (cambiar antes de usarlo en serio):
 | Eric / Santino / Santino E. / Ale | 1111 / 2222 / 3333 / 4444 |
 
 Los servicios, precios, duraciones y horarios (lunes a sábado, de 8 a 21) son los reales de Fausto. Los productos y el teléfono del local todavía no están cargados. Todo se edita desde **Gestión → Ajustes**.
+
+## Fila sin turno (fila general)
+**Cliente** (`/reservar/?modo=fila`): no elige barbero. Elige el servicio, deja sus datos y queda en **una sola fila general** (le dice cuántos hay antes). A todo el equipo le llega el aviso.
+
+**Cierre del corte:** cuando se atiende, se toca **Hecho**. **Fausto indica de quién fue el corte** (selector "¿De quién fue el corte?") y recién ahí cuenta como un turno de ese barbero: comisión, caja y estadísticas. Un barbero común también puede tocar Hecho en la fila y le queda a su nombre.
+
+**Dónde se ve:** en *Mi día → Fila* (todos) y en *Agenda → Fila* (Fausto ve toda la fila del día). **+ Fila** en Agenda carga a alguien que llegó sin turno.
+
+## Borrar contactos
+Solo el dueño: Contactos → tocar el cliente → **Editar datos** → **Borrar contacto**. No deja borrar a alguien con un turno pendiente, en la fila o con deuda de cancelación. Sus cortes pasados no se pierden: quedan en la caja como ventas del mostrador. Si esa persona vuelve a reservar, se crea un contacto nuevo.
 
 ## Celular y PC
 Todo funciona en celular y en computadora. Desde 1024 px de ancho se usa el diseño de escritorio (`public/desktop.css`, se carga al final en reservas, Mis turnos y Gestión): la reserva queda en dos columnas con el resumen fijo a la derecha, y Gestión pasa a un menú lateral con ventanas centradas. El comprobante de "¡Listo!" queda angosto y centrado, y el aviso de PIN de ejemplo en Gestión tiene su espacio. En celulares y tablets chicas no cambia nada. Para ajustar el ancho o el menú, editá solo ese archivo.
