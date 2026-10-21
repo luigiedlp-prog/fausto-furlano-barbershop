@@ -342,7 +342,7 @@ async function meData(db, me, st, n) {
   const r = await db.batch([
     ...closeOldStmts(db),
     db.prepare("SELECT COUNT(*) n,MAX(date) d FROM bp_appts WHERE status='unrecorded' AND date>=?" + (owner ? '' : ' AND staff_id=?')).bind(...(owner ? [addD(n.date, -14)] : [addD(n.date, -14), me.id])),
-    db.prepare("SELECT a.id,a.kind,a.staff_id,a.time,a.service_id,a.service_name,a.price,a.status,a.created_at,a.extras,a.pay,c.id client_id,c.notes,(SELECT COALESCE(SUM(f.amount),0) FROM bp_fees f WHERE f.client_id=c.id AND f.paid=0) debt,c.name cname,c.whatsapp,c.birthday,c.last_visit,c.visits,(SELECT p.service_name FROM bp_appts p WHERE p.client_id=a.client_id AND p.status='done' ORDER BY p.date DESC,p.rowid DESC LIMIT 1) last_service " + dayQ + ' ORDER BY a.created_at').bind(me.id, n.date),
+    db.prepare("SELECT a.id,a.kind,a.staff_id,a.time,a.service_id,a.service_name,a.price,a.amount,a.status,a.created_at,a.extras,a.pay,c.id client_id,c.notes,(SELECT COALESCE(SUM(f.amount),0) FROM bp_fees f WHERE f.client_id=c.id AND f.paid=0) debt,c.name cname,c.whatsapp,c.birthday,c.last_visit,c.visits,(SELECT p.service_name FROM bp_appts p WHERE p.client_id=a.client_id AND p.status='done' ORDER BY p.date DESC,p.rowid DESC LIMIT 1) last_service " + dayQ + ' ORDER BY a.created_at').bind(me.id, n.date),
     db.prepare(`SELECT ${ITEM_COLS} FROM bp_items i WHERE i.appt_id IN (SELECT a.id ${dayQ}) ORDER BY i.rowid`).bind(me.id, n.date),
     db.prepare('SELECT id,name,description,price,stock,track,active' + (owner ? ',low,comm_pct,photo,cost' : '') + ' FROM bp_products ORDER BY active DESC,name'),
     db.prepare('SELECT COUNT(*) n FROM bp_notif WHERE staff_id=? AND seen=0').bind(me.id),
@@ -850,6 +850,51 @@ async function route(req, db, u, p, env, ctx) {
     return J(200, { ok: true });
   }
 
+  if (p === '/api/appt/fix' && req.method === 'POST') { // solo el dueño: corrige un turno ya marcado como hecho (servicio, barbero y datos del cliente)
+    if (me.role !== 'owner') throw err(403, 'Solo el dueño puede corregir un turno hecho');
+    const a = await db.prepare("SELECT * FROM bp_appts WHERE id=? AND status='done' AND kind IN('turno','fila')").bind(String(B.id || '')).first();
+    if (!a) throw err(404, 'Turno hecho no encontrado');
+    const cur = await db.prepare('SELECT * FROM bp_clients WHERE id=?').bind(a.client_id).first(), ch = [];
+    let sid = a.staff_id, sv = { id: a.service_id, name: a.service_name, price: a.price, duration: a.duration }, exs = a.extras, amt = a.amount;
+    const hasAmt = B.amount !== '' && B.amount != null && Number.isFinite(+B.amount) && +B.amount >= 0;
+    if (B.staff && B.staff !== a.staff_id) {
+      if (a.ext_src === SYNC_SRC) throw err(409, 'Este turno viene de la agenda de Santi: no se puede pasar a otro barbero.');
+      const s = await staffOk(db, B.staff); sid = s.id; ch.push('barbero → ' + s.name);
+    }
+    if (B.service && B.service !== a.service_id) {
+      const s = await svcOf(db, B.service, false); sv = { id: s.id, name: s.name, price: s.price, duration: s.duration }; exs = null;
+      amt = hasAmt ? Math.round(+B.amount) : s.price; ch.push('servicio → ' + s.name);
+    } else if (hasAmt && Math.round(+B.amount) !== a.amount) amt = Math.round(+B.amount);
+    if (amt !== a.amount) ch.push('monto ' + money(a.amount) + ' → ' + money(amt));
+    // cliente: si el WhatsApp es de otro contacto, el corte pasa a ese contacto; si no, se corrigen los datos del contacto
+    const nm = String(B.name ?? cur.name).trim().slice(0, 80), wa = String(B.whatsapp ?? cur.whatsapp).replace(/\D/g, ''), bd = B.birthday || null;
+    const mostr = cur.id === 'c_mostrador', touch = !mostr || (nm && wa.length >= 8);
+    if (bd && !isDate(bd)) throw err(400, 'El cumpleaños no es una fecha válida');
+    const pt = a.prod_total || 0, st2 = [];
+    let cid = cur.id;
+    if (touch) {
+      if (!nm) throw err(400, 'Ingresá el nombre');
+      if (wa.length < 8) throw err(400, 'Ingresá un WhatsApp válido');
+      const other = await db.prepare('SELECT id,name FROM bp_clients WHERE whatsapp=? AND id!=?').bind(wa, cur.id).first();
+      if (other || mostr) {
+        cid = other ? other.id : await client(db, nm, wa, bd);
+        if (!mostr) st2.push(db.prepare('UPDATE bp_clients SET visits=MAX(visits-1,0),total_spent=MAX(total_spent-?,0) WHERE id=?').bind(a.amount + pt, cur.id));
+        st2.push(db.prepare('UPDATE bp_clients SET visits=visits+1,total_spent=total_spent+?,last_visit=CASE WHEN last_visit IS NULL OR last_visit<? THEN ? ELSE last_visit END WHERE id=?').bind(amt + pt, a.date, a.date, cid));
+        ch.push('cliente → ' + (other ? other.name : nm));
+      } else {
+        if (nm !== cur.name || wa !== cur.whatsapp || (bd && bd !== cur.birthday)) {
+          st2.push(db.prepare('UPDATE bp_clients SET name=?,whatsapp=?,birthday=COALESCE(?,birthday) WHERE id=?').bind(nm, wa, bd, cur.id));
+          ch.push('datos del cliente');
+        }
+        if (amt !== a.amount) st2.push(db.prepare('UPDATE bp_clients SET total_spent=MAX(total_spent+?,0) WHERE id=?').bind(amt - a.amount, cur.id));
+      }
+    } else if (amt !== a.amount) st2.push(db.prepare('UPDATE bp_clients SET total_spent=MAX(total_spent+?,0) WHERE id=?').bind(amt - a.amount, cur.id));
+    if (!ch.length) return J(200, { ok: true, changed: false });
+    await db.batch([db.prepare('UPDATE bp_appts SET staff_id=?,service_id=?,service_name=?,price=?,duration=?,amount=?,extras=?,client_id=? WHERE id=?').bind(sid, sv.id, sv.name, sv.price, sv.duration, amt, exs, cid, a.id), ...st2]);
+    await audit(db, me, 'Corrigió un turno hecho', `${cur.name} · ${fd(a.date)} ${a.time || ''}: ${ch.join(' · ')}`);
+    return J(200, { ok: true, changed: true });
+  }
+
   if (p === '/api/sale' && req.method === 'POST') {
     const sf = me.role === 'owner' && B.staff ? await staffOk(db, B.staff) : { id: me.id, name: me.name }, pay = B.pay === 'transferencia' ? 'transferencia' : 'efectivo';
     if (!B.force && (await db.prepare("SELECT id FROM bp_appts WHERE kind='venta' AND status='done' AND staff_id=? AND created_at>=datetime('now','-10 seconds')").bind(sf.id).first())) throw Object.assign(err(409, 'Acabás de registrar otra venta hace unos segundos.'), { soft: true });
@@ -887,10 +932,10 @@ async function route(req, db, u, p, env, ctx) {
     const sid = me.role === 'owner' ? (u.searchParams.get('staff') || 'all') : me.id, one = sid !== 'all';
     const W = `FROM bp_appts a JOIN bp_clients c ON c.id=a.client_id JOIN bp_staff s ON s.id=a.staff_id WHERE a.kind='turno' AND a.date=? AND a.status!='cancelled' ${one ? 'AND a.staff_id=?' : ''}`, WF = `FROM bp_appts a JOIN bp_clients c ON c.id=a.client_id LEFT JOIN bp_staff s ON s.id=a.staff_id WHERE a.kind='fila' AND a.date=? AND a.status!='cancelled' ${one ? "AND (a.staff_id=? OR a.staff_id='')" : ''}`, wa = one ? [d, sid] : [d];
     const r = await db.batch([...closeOldStmts(db),
-      db.prepare(`SELECT a.id,a.kind,a.date,a.time,a.duration,a.staff_id,a.service_id,a.service_name,a.price,a.status,a.created_at,a.extras,c.id client_id,c.notes,(SELECT COALESCE(SUM(f.amount),0) FROM bp_fees f WHERE f.client_id=c.id AND f.paid=0) debt,c.name cname,c.whatsapp,c.birthday,c.visits,s.name sname ${W} ORDER BY a.time`).bind(...wa),
+      db.prepare(`SELECT a.id,a.kind,a.date,a.time,a.duration,a.staff_id,a.service_id,a.service_name,a.price,a.amount,a.status,a.created_at,a.extras,c.id client_id,c.notes,(SELECT COALESCE(SUM(f.amount),0) FROM bp_fees f WHERE f.client_id=c.id AND f.paid=0) debt,c.name cname,c.whatsapp,c.birthday,c.visits,s.name sname ${W} ORDER BY a.time`).bind(...wa),
       db.prepare(`SELECT ${ITEM_COLS} FROM bp_items i WHERE i.appt_id IN (SELECT a.id ${W}) ORDER BY i.rowid`).bind(...wa),
       db.prepare(`SELECT b.*,s.name sname FROM bp_blocks b LEFT JOIN bp_staff s ON s.id=b.staff_id WHERE b.d2>=? ${one ? 'AND (b.staff_id IS NULL OR b.staff_id=?)' : ''} ORDER BY b.d1,b.t1`).bind(...(one ? [n.date, sid] : [n.date])),
-      db.prepare(`SELECT a.id,a.kind,a.date,a.time,a.duration,a.staff_id,a.service_id,a.service_name,a.price,a.status,a.created_at,a.extras,c.id client_id,c.notes,(SELECT COALESCE(SUM(f.amount),0) FROM bp_fees f WHERE f.client_id=c.id AND f.paid=0) debt,c.name cname,c.whatsapp,c.birthday,c.visits,s.name sname ${WF} ORDER BY a.created_at`).bind(...wa),
+      db.prepare(`SELECT a.id,a.kind,a.date,a.time,a.duration,a.staff_id,a.service_id,a.service_name,a.price,a.amount,a.status,a.created_at,a.extras,c.id client_id,c.notes,(SELECT COALESCE(SUM(f.amount),0) FROM bp_fees f WHERE f.client_id=c.id AND f.paid=0) debt,c.name cname,c.whatsapp,c.birthday,c.visits,s.name sname ${WF} ORDER BY a.created_at`).bind(...wa),
       db.prepare(`SELECT ${ITEM_COLS} FROM bp_items i WHERE i.appt_id IN (SELECT a.id ${WF}) ORDER BY i.rowid`).bind(...wa)]);
     const appts = r[3].results; appts.forEach(a => { a.cumple = !!a.birthday && a.birthday.slice(5) === d.slice(5); });
     attachRows(appts, r[4].results);
