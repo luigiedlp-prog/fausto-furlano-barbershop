@@ -32,12 +32,12 @@ function sheet(h){$('sheet').innerHTML='<div class="handle"></div>'+h;$('overlay
 function closeSheet(){$('overlay').classList.remove('show')}
 
 /* ---- Mi día ---- */
-const findAppt=id=>[...(M.day||[]),...(AG?AG.appts:[]),...AFF].find(x=>x.id===id);
+const findAppt=id=>[...(M.day||[]),...(AG?AG.appts:[]),...(AG&&AG.fila?AG.fila:[]),...AFF].find(x=>x.id===id);
 function ev(a,ag){
   const S={pending:['pending','Pendiente'],done:['done','Hecho'],no_show:['noshow','No asistió'],cancelled:['cancelled','Cancelado'],unrecorded:['cancelled','No se registró']}[a.status]||['pending',''];
   const info=[a.last_service?'Última vez: '+esc(a.last_service):(a.visits?a.visits+' visitas':'Cliente nuevo')].join('');
   return `<div class="appt"><div class="tm">${a.kind==='turno'?esc(a.time):hh(a.created_at)}</div><div class="ev ${S[0]}"><div class="hd"><div><div class="nm">${esc(a.cname)}</div><span class="tag ${S[0]}">${S[1]}</span>${a.kind==='fila'?'<span class="tag pending" style="margin-left:6px">Fila</span>':''}${a.cumple?`<span class="tag pending" style="margin-left:6px">${ico('cake')} Hoy cumple</span>`:''}</div><span class="pr">${fmt(a.price)}</span></div>
-  <div class="sv">${esc(a.service_name)}${ag&&M.me.role==='owner'?' · '+esc(a.sname):''}</div><div class="ph">${ico('phone')} ${esc(displayWA(a.whatsapp))} · ${info}</div>
+  <div class="sv">${esc(a.service_name)}${ag&&M.me.role==='owner'&&a.sname?' · '+esc(a.sname):''}</div><div class="ph">${ico('phone')} ${esc(displayWA(a.whatsapp))} · ${info}</div>
   ${a.debt?`<div class="cnote" style="color:var(--bad)"><b>Debe ${fmt(a.debt)}</b> por una cancelación a último momento <button class="linkbtn" onclick="feePaid('${a.client_id}')">Registrar cobro</button></div>`:''}
   ${a.items&&a.items.length?`<div class="cnote"><b>${ico('tag')} Entregar:</b> ${a.items.map(i=>i.qty+' × '+esc(i.name)).join(' · ')}</div>`:''}
   ${a.notes?`<div class="cnote">${ico('book')} ${esc(a.notes)}</div>`:''}<button class="linkbtn" onclick="noteSheet('${a.client_id}','${a.id}')">${a.notes?'Editar nota del cliente':'+ Nota del cliente'}</button>
@@ -60,6 +60,7 @@ function vDia(){
 function doneSheet(id){
   const a=findAppt(id);
   sheet(`<h2>${esc(a.cname)}</h2><p class="sub">Confirmá lo que se hizo y lo que se cobró.</p>
+  ${a.kind==='fila'&&M.me.role==='owner'?`<div class="field"><label>¿De quién fue el corte?</label><select id="dbar">${a.staff_id?'':'<option value="">Elegí al barbero…</option>'}${stOpts(a.staff_id||'')}</select></div>`:''}
   <div class="field"><label>Servicio</label><select id="ds" onchange="$('da').value=(M.services.find(s=>s.id===this.value)||{}).price;dtot(${(a.items||[]).reduce((t,i)=>t+i.qty*i.price,0)})">${M.services.map(s=>`<option value="${s.id}" ${s.id===a.service_id?'selected':''}>${esc(s.name)} · ${fmt(s.price)}</option>`).join('')}</select></div>
   ${(()=>{const pt=(a.items||[]).reduce((t,i)=>t+i.qty*i.price,0);return `<div class="field"><label>${pt?'Servicio cobrado':'Monto cobrado'}</label><input id="da" type="number" inputmode="numeric" value="${a.price}" oninput="dtot(${pt})"></div>${pt?`<div class="group pad"><div class="hrow"><span>Productos<small>${a.items.map(i=>i.qty+' × '+esc(i.name)).join(' · ')}</small></span><b>${fmt(pt)}</b></div><div class="hrow"><span><b>Total a cobrar</b></span><b id="dt">${fmt(a.price+pt)}</b></div></div>`:''}`})()}
   <div class="field"><label>Medio de pago</label><div class="seg" id="dp"><button class="on" data-v="efectivo">Efectivo</button><button data-v="transferencia">Transferencia</button></div></div>
@@ -67,7 +68,7 @@ function doneSheet(id){
   document.querySelectorAll('#dp button').forEach(b=>b.onclick=()=>document.querySelectorAll('#dp button').forEach(x=>x.classList.toggle('on',x===b)));
 }
 function dtot(p){const e=$('dt');if(e)e.textContent=fmt((+$('da').value||0)+p)}
-async function doDone(id){try{await post('/appt/done',{id,serviceId:$('ds').value,amount:$('da').value,pay:document.querySelector('#dp .on').dataset.v});closeSheet();AG=null;await load();draw();toast('Servicio registrado')}catch(e){$('de').textContent=e.message}}
+async function doDone(id){if($('dbar')&&!$('dbar').value){$('de').textContent='Elegí de quién fue el corte';return}try{await post('/appt/done',{id,staff:($('dbar')||{}).value||undefined,serviceId:$('ds').value,amount:$('da').value,pay:document.querySelector('#dp .on').dataset.v});closeSheet();AG=null;await load();draw();toast('Servicio registrado')}catch(e){$('de').textContent=e.message}}
 async function setSt(id,status){
   if(!await confirmD(status==='no_show'?'¿Marcar este turno como "No asistió"?':'¿Cancelar este turno?',status==='no_show'?'Marcar':'Cancelar turno',true))return;
   const a=findAppt(id);
@@ -240,9 +241,10 @@ function vAg(){
   <div class="agnav"><button class="glassbtn" onclick="agGo(-1)" aria-label="Día anterior">${ico('chevL')}</button><label class="agd"><b>${longDate(d)}</b><input type="date" value="${d}" onchange="agSet(this.value)"></label><button class="glassbtn" onclick="agGo(1)" aria-label="Día siguiente">${ico('chev')}</button></div>
   ${d!==AG.today?`<button class="btn" style="width:100%;margin-bottom:10px" onclick="agSet('${AG.today}')">Ir a hoy</button>`:''}
   ${owner?`<div class="field" style="margin-top:0"><label>Barbero</label><select onchange="agStaff=this.value;AG=null;draw()"><option value="all">Todos</option>${A.team.filter(s=>s.active!==false).map(s=>`<option value="${s.id}" ${agStaff===s.id?'selected':''}>${esc(s.name)}</option>`).join('')}</select></div>`:''}
-  <div class="row2" style="grid-template-columns:repeat(3,1fr)"><button class="btn primary" onclick="newSheet()">+ Turno</button><button class="btn primary" onclick="ventaSheet()">+ Venta</button><button class="btn" onclick="blkSheet()">Bloquear</button></div>
+  <div class="row2" style="grid-template-columns:repeat(2,1fr)"><button class="btn primary" onclick="newSheet()">+ Turno</button><button class="btn primary" onclick="filaSheet()">+ Fila</button><button class="btn primary" onclick="ventaSheet()">+ Venta</button><button class="btn" onclick="blkSheet()">Bloquear</button></div>
   ${dayB.map(blkCard).join('')}
   ${sec('Turnos',String(AG.appts.length),AG.appts.length?AG.appts.map(a=>ev(a,true)).join(''):'<div class="group"><div class="empty"><b>Sin turnos este día</b></div></div>')}
+  ${AG.fila&&(AG.fila.length||d===AG.today)?sec('Fila',AG.fila.filter(a=>a.status==='pending').length+' esperando',AG.fila.length?AG.fila.map(a=>ev(a,true)).join(''):'<div class="group"><div class="empty"><b>Nadie esperando</b></div></div>'):''}
   ${later.length?sec('Otros bloqueos',String(later.length),later.map(blkCard).join('')):''}`;
 }
 const svOpts=sel=>M.services.filter(s=>!s.addon).map(s=>`<option value="${s.id}" ${s.id===sel?'selected':''}>${esc(s.name)} · ${fmt(s.price)}</option>`).join('');
@@ -261,6 +263,14 @@ function newSheet(){const owner=M.me.role==='owner';
 async function saveNew(force){const b={staff:($('nbar')||{}).value,service:$('ns').value,extras:exSel(),products:pqSel(),date:$('nd').value,time:$('nh').value,name:$('nn').value,whatsapp:formatWA($('nw').value),price:$('np').value,force:!!force};
   try{await post('/appt/create',b);closeSheet();AG=null;await load();draw();toast('Turno cargado')}
   catch(e){if(e.data&&e.data.soft){if(await confirmD(e.message+' ¿Cargarlo igual?','Cargar igual'))return saveNew(true)}else $('ne').textContent=e.message}}
+function filaSheet(){
+  sheet(`<h2>Cargar en la fila</h2><p class="sub">Para quien llegó sin turno. Queda en la fila general; al marcarlo Hecho ${M.me.role==='owner'?'indicás de quién fue el corte':'queda a tu nombre'}.</p>
+  <div class="field"><label>Servicio</label><select id="ns" onchange="exCalc()">${svOpts()}</select></div>${exBoxes([])}${prodBoxes({})}
+  <div class="field"><label>Nombre del cliente</label><input id="nn" autocomplete="off"></div><div class="field"><label>WhatsApp</label><div class="pair"><input class="prefix" value="+54 9" disabled aria-label="Prefijo"><input id="nw" inputmode="tel" placeholder="2477 201614"></div></div>
+  <div class="field"><label>Precio</label><input id="np" type="number" inputmode="numeric" value="${(M.services.find(s=>!s.addon)||{}).price||''}"></div><p class="err" id="ne"></p><button class="btn primary" onclick="saveFila()">Anotar en la fila</button>`)}
+async function saveFila(){const b={service:$('ns').value,extras:exSel(),products:pqSel(),name:$('nn').value,whatsapp:formatWA($('nw').value),price:$('np').value};
+  try{const r=await post('/queue/add',b);closeSheet();AG=null;await load();draw();toast('Anotado en la fila · lugar '+r.position)}
+  catch(e){$('ne').textContent=e.message}}
 function moveSheet(id){const a=findAppt(id),t=a.kind==='turno',owner=M.me.role==='owner';
   sheet(`<h2>${esc(a.cname)}</h2><p class="sub">${t?'Cambiá el día, la hora, el servicio o el precio.':'Cambiá el servicio o el precio.'}</p>
   <div class="field"><label>Servicio</label><select id="ms" onchange="exCalc()">${svOpts(a.service_id)}</select></div>${exBoxes(JSON.parse(a.extras||'[]').map(x=>x.id))}${prodBoxes(Object.fromEntries((a.items||[]).map(i=>[i.product_id,i.qty])))}
@@ -295,7 +305,8 @@ async function readAll(){await post('/notifs/read',{all:true});M.notif=0;notifSh
 function noteSheet(cid,aid){const a=findAppt(aid);sheet(`<h2>Nota de ${esc(a.cname)}</h2><p class="hint">La ven todos los barberos cuando atienden a este cliente. Ej.: "máquina 2 a los costados".</p><div class="field"><textarea id="nt" rows="3" maxlength="300">${esc(a.notes||'')}</textarea></div><p class="err" id="nte"></p><button class="btn primary" onclick="saveNote('${cid}')">Guardar</button>`)}
 async function saveNote(cid){try{await post('/client/note',{id:cid,notes:$('nt').value});closeSheet();AG=null;await load();draw();toast('Nota guardada')}catch(e){$('nte').textContent=e.message}}
 function cliEdit(id){const c=A.clients.find(x=>x.id===id),w9=formatWA(c.whatsapp);
-  sheet(`<h2>Editar cliente</h2><div class="field"><label>Nombre</label><input id="cn" value="${esc(c.name)}"></div><div class="field"><label>WhatsApp</label><div class="pair"><input class="prefix" value="+54 9" disabled aria-label="Prefijo"><input id="cw" inputmode="tel" value="${esc(w9.length===13?w9.slice(3):c.whatsapp)}"></div></div><div class="field"><label>Cumpleaños (opcional)</label><input id="cb" type="date" value="${esc(c.birthday||'')}"></div><div class="field"><label>Notas</label><textarea id="cx" rows="3" maxlength="300">${esc(c.notes||'')}</textarea></div><p class="err" id="ce"></p><button class="btn primary" onclick="saveCli('${id}')">Guardar</button>`)}
+  sheet(`<h2>Editar cliente</h2><div class="field"><label>Nombre</label><input id="cn" value="${esc(c.name)}"></div><div class="field"><label>WhatsApp</label><div class="pair"><input class="prefix" value="+54 9" disabled aria-label="Prefijo"><input id="cw" inputmode="tel" value="${esc(w9.length===13?w9.slice(3):c.whatsapp)}"></div></div><div class="field"><label>Cumpleaños (opcional)</label><input id="cb" type="date" value="${esc(c.birthday||'')}"></div><div class="field"><label>Notas</label><textarea id="cx" rows="3" maxlength="300">${esc(c.notes||'')}</textarea></div><p class="err" id="ce"></p><button class="btn primary" onclick="saveCli('${id}')">Guardar</button><button class="btn danger" style="margin-top:10px;width:100%" onclick="delCli('${id}')">Borrar contacto</button>`)}
+async function delCli(id){if(!await confirmD('¿Borrar este contacto? Sus cortes pasados quedan en la caja como ventas del mostrador. No se puede deshacer.','Borrar',true))return;try{await post('/admin/client/del',{id});closeSheet();await load();draw();toast('Contacto borrado')}catch(e){alertD(e.message)}}
 async function saveCli(id){try{await post('/admin/client',{id,name:$('cn').value,whatsapp:formatWA($('cw').value),birthday:$('cb').value,notes:$('cx').value});closeSheet();await load();draw();toast('Cliente actualizado')}catch(e){$('ce').textContent=e.message}}
 setInterval(()=>{if(M&&document.visibilityState==='visible'&&!$('overlay').classList.contains('show'))api('/notifs?count=1').then(r=>badge(r.unread)).catch(()=>{})},30000);
 
