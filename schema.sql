@@ -47,3 +47,20 @@ CREATE INDEX IF NOT EXISTS bp_items_a ON bp_items(appt_id);
 CREATE INDEX IF NOT EXISTS bp_notif_s ON bp_notif(staff_id,seen);
 
 CREATE INDEX IF NOT EXISTS bp_subs_r ON bp_subs(role,ref);
+
+-- Indices de rendimiento (v6-rapido)
+CREATE INDEX IF NOT EXISTS bp_appts_ds ON bp_appts(date,status);
+
+CREATE INDEX IF NOT EXISTS bp_appts_sd ON bp_appts(staff_id,date);
+
+CREATE INDEX IF NOT EXISTS bp_appts_c ON bp_appts(client_id);
+
+CREATE INDEX IF NOT EXISTS bp_items_p ON bp_items(product_id);
+
+CREATE INDEX IF NOT EXISTS bp_fees_c ON bp_fees(client_id,paid);
+
+CREATE INDEX IF NOT EXISTS bp_fees_pd ON bp_fees(paid_date);
+
+CREATE INDEX IF NOT EXISTS bp_exp_d ON bp_expenses(date);
+
+CREATE INDEX IF NOT EXISTS bp_pay_d ON bp_payouts(date);

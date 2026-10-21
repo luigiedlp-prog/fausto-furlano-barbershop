@@ -36,12 +36,24 @@ const SCHEMA = [
 `CREATE TABLE IF NOT EXISTS bp_audit (id TEXT PRIMARY KEY,at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,staff_id TEXT,staff_name TEXT,action TEXT NOT NULL,detail TEXT)`,
 `CREATE TABLE IF NOT EXISTS bp_cash (date TEXT PRIMARY KEY,expected INTEGER NOT NULL,counted INTEGER NOT NULL,diff INTEGER NOT NULL,staff_id TEXT,staff_name TEXT,at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`,
 `CREATE TABLE IF NOT EXISTS bp_sessions (token TEXT PRIMARY KEY,staff_id TEXT NOT NULL,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`,
+`CREATE INDEX IF NOT EXISTS bp_appts_ds ON bp_appts(date,status)`,
+`CREATE INDEX IF NOT EXISTS bp_appts_sd ON bp_appts(staff_id,date)`,
+`CREATE INDEX IF NOT EXISTS bp_appts_c ON bp_appts(client_id)`,
+`CREATE INDEX IF NOT EXISTS bp_items_p ON bp_items(product_id)`,
+`CREATE INDEX IF NOT EXISTS bp_fees_c ON bp_fees(client_id,paid)`,
+`CREATE INDEX IF NOT EXISTS bp_fees_pd ON bp_fees(paid_date)`,
+`CREATE INDEX IF NOT EXISTS bp_exp_d ON bp_expenses(date)`,
+`CREATE INDEX IF NOT EXISTS bp_pay_d ON bp_payouts(date)`,
 ];
 
 const NEW_SERVICES = [['s1', 'Corte de cabello', 15000, 20, 'Corte a tu estilo', 'corte', 0], ['s2', 'Barba', 15000, 15, 'Afeitado contemporáneo', 'barba', 0], ['s3', 'Corte y barba', 17000, 20, 'Corte a tu estilo + afeitado contemporáneo', 'barba', 0], ['s4', 'Corte, barba y lavado', 22000, 30, 'Corte + afeitado contemporáneo + lavado', 'lavado', 0], ['s5', 'Servicio completo', 28000, 40, 'Corte, afeitado tradicional con toallas al vapor y lavado', 'afeitado', 0], ['s6', 'Tratamiento facial', 18000, 20, 'Mascarilla con vapor', 'facial', 1]]; // Precios de ejemplo: se cambian desde Gestión
+// Subí este valor cada vez que agregues una tabla, columna, índice o dato inicial en init(): así se vuelve a correr una vez.
+const SCHEMA_V = 'v6-rapido';
 let ready = false;
 async function init(db) {
   if (ready) return;
+  // Camino rápido: si la base ya está al día, una sola consulta alcanza (antes eran ~35 en cada arranque en frío).
+  if (await db.prepare("SELECT v FROM bp_settings WHERE k='schema_v'").first().then(r => !!r && r.v === SCHEMA_V, () => false)) { ready = true; return; }
   await db.batch(SCHEMA.map(s => db.prepare(s)));
   await db.prepare("INSERT OR IGNORE INTO bp_clients(id,name,whatsapp) VALUES('c_mostrador','Venta en mostrador','mostrador')").run();
   await db.prepare('ALTER TABLE bp_appts ADD COLUMN reminded INTEGER NOT NULL DEFAULT 0').run().catch(() => {});
@@ -119,6 +131,7 @@ async function init(db) {
     q.push(db.prepare("INSERT OR REPLACE INTO bp_settings(k,v) VALUES('svc_v4','1')"));
     await db.batch(q);
   }
+  await db.prepare("INSERT OR REPLACE INTO bp_settings(k,v) VALUES('schema_v',?)").bind(SCHEMA_V).run();
   ready = true;
 }
 
@@ -156,7 +169,7 @@ const isTime = t => /^([01]\d|2[0-3]):[0-5]\d$/.test(t || '');
 const addD = (d, k) => { const x = new Date(d + 'T12:00:00Z'); x.setUTCDate(x.getUTCDate() + k); return x.toISOString().slice(0, 10); };
 const fd = d => d.slice(8) + '/' + d.slice(5, 7);
 // Los turnos que quedaron pendientes de días anteriores pasan a "No se registró" (no cuentan como cobro ni como falta del cliente).
-const closeOld = async db => { await db.prepare("UPDATE bp_appts SET status='unrecorded' WHERE status='pending' AND date<?").bind(now().date).run(); await releaseDead(db); };
+
 const blocksFor = async (db, date, staff) => (await db.prepare('SELECT * FROM bp_blocks WHERE d1<=? AND d2>=? AND (staff_id IS NULL OR staff_id=?)').bind(date, date, staff).all()).results;
 const hits = (b, m, dur) => !b.t1 || (m < tm(b.t2) && tm(b.t1) < m + dur);
 async function conflicts(db, staff, date, time, dur, exclude) {
@@ -206,9 +219,12 @@ async function pubSvc(db, id, guest, extras) { const s0 = await svcOf(db, id); r
 
 // ---- Productos y stock: el stock se descuenta al reservar y vuelve si el turno se cancela, el cliente no viene o queda "No se registró".
 const DEAD = "('cancelled','no_show','unrecorded')";
-const releaseDead = db => db.batch([
+const releaseDeadStmts = db => [
   db.prepare(`UPDATE bp_products SET stock=stock+COALESCE((SELECT SUM(i.qty) FROM bp_items i JOIN bp_appts a ON a.id=i.appt_id WHERE i.product_id=bp_products.id AND i.held=1 AND a.status IN ${DEAD}),0) WHERE id IN (SELECT i.product_id FROM bp_items i JOIN bp_appts a ON a.id=i.appt_id WHERE i.held=1 AND a.status IN ${DEAD})`),
-  db.prepare(`UPDATE bp_items SET held=0 WHERE held=1 AND appt_id IN (SELECT id FROM bp_appts WHERE status IN ${DEAD})`)]);
+  db.prepare(`UPDATE bp_items SET held=0 WHERE held=1 AND appt_id IN (SELECT id FROM bp_appts WHERE status IN ${DEAD})`)];
+const releaseDead = db => db.batch(releaseDeadStmts(db));
+const closeOldStmts = db => [db.prepare("UPDATE bp_appts SET status='unrecorded' WHERE status='pending' AND date<?").bind(now().date), ...releaseDeadStmts(db)];
+const closeOld = db => db.batch(closeOldStmts(db));
 async function holdBack(db, apptId) { // un turno "No se registró" que en realidad se hizo: vuelve a descontar
   const its = (await db.prepare('SELECT i.id,i.product_id,i.qty,p.track FROM bp_items i JOIN bp_products p ON p.id=i.product_id WHERE i.appt_id=? AND i.held=0').bind(apptId).all()).results;
   for (const i of its) if (i.track) { await db.prepare('UPDATE bp_products SET stock=MAX(stock-?,0) WHERE id=?').bind(i.qty, i.product_id).run(); await db.prepare('UPDATE bp_items SET held=1 WHERE id=?').bind(i.id).run(); }
@@ -293,6 +309,42 @@ async function queueInfo(db, staff, svc) {
 const per = async (db, a, b) => Object.fromEntries((await db.prepare("SELECT staff_id s,COUNT(CASE WHEN kind!='venta' THEN 1 END) n,COALESCE(SUM(amount),0) sv,COALESCE(SUM(prod_total),0) p,COALESCE(SUM(prod_comm),0) pc FROM bp_appts WHERE status='done' AND date BETWEEN ? AND ? GROUP BY staff_id").bind(a, b).all()).results.map(r => [r.s, r]));
 const periods = async db => { const d = now().date, r = rng(d); return Promise.all([per(db, d, d), per(db, r.w, d), per(db, r.m, d)]); };
 const pack = (role, pct, rows, id) => Object.fromEntries(['today', 'week', 'month'].map((k, i) => { const x = rows[i][id] || { n: 0, sv: 0, p: 0, pc: 0 }; return [k, { n: x.n, t: x.sv + x.p, p: x.p, c: role === 'owner' ? 0 : Math.round(x.sv * pct / 100) + x.pc }]; }));
+const PER_SQL = "SELECT staff_id s,COUNT(CASE WHEN kind!='venta' THEN 1 END) n,COALESCE(SUM(amount),0) sv,COALESCE(SUM(prod_total),0) p,COALESCE(SUM(prod_comm),0) pc FROM bp_appts WHERE status='done' AND date BETWEEN ? AND ? GROUP BY staff_id";
+const periodStmts = db => { const d = now().date, r = rng(d); return [[d, d], [r.w, d], [r.m, d]].map(x => db.prepare(PER_SQL).bind(...x)); };
+const perMap = r => Object.fromEntries(r.results.map(x => [x.s, x]));
+const WEAK_PINS = ['1234', '1111', '2222', '3333', '4444'];
+let weakH = null;
+const weakHashes = () => weakH || (weakH = Promise.all(WEAK_PINS.map(hash)));
+const ITEM_COLS = 'i.appt_id,i.product_id,i.name,i.qty,i.price';
+function attachRows(appts, rows) { // mismo resultado que attachItems pero con las filas ya leídas en el mismo viaje a D1
+  appts.forEach(a => { a.items = []; });
+  const by = Object.fromEntries(appts.map(a => [a.id, a]));
+  for (const r of rows) if (by[r.appt_id]) by[r.appt_id].items.push({ product_id: r.product_id, name: r.name, qty: r.qty, price: r.price });
+}
+// Sesión + ajustes en un solo viaje a D1.
+async function whoCfg(req, db) {
+  const t = (req.headers.get('cookie') || '').match(/bp_s=([\w-]+)/)?.[1];
+  if (!t) return [null, null];
+  const [a, b] = await db.batch([db.prepare('SELECT s.id,s.name,s.role FROM bp_sessions x JOIN bp_staff s ON s.id=x.staff_id WHERE x.token=? AND s.active=1').bind(t), db.prepare('SELECT k,v FROM bp_settings')]);
+  return [a.results[0] || null, Object.fromEntries(b.results.map(r => [r.k, r.v]))];
+}
+async function meData(db, me, st, n) {
+  const owner = me.role === 'owner', dayQ = "FROM bp_appts a JOIN bp_clients c ON c.id=a.client_id WHERE a.staff_id=? AND a.date=? AND a.status!='cancelled'";
+  const r = await db.batch([
+    ...closeOldStmts(db),
+    db.prepare("SELECT COUNT(*) n,MAX(date) d FROM bp_appts WHERE status='unrecorded' AND date>=?" + (owner ? '' : ' AND staff_id=?')).bind(...(owner ? [addD(n.date, -14)] : [addD(n.date, -14), me.id])),
+    db.prepare("SELECT a.id,a.kind,a.time,a.service_id,a.service_name,a.price,a.status,a.created_at,a.extras,a.pay,c.id client_id,c.notes,(SELECT COALESCE(SUM(f.amount),0) FROM bp_fees f WHERE f.client_id=c.id AND f.paid=0) debt,c.name cname,c.whatsapp,c.birthday,c.last_visit,c.visits,(SELECT p.service_name FROM bp_appts p WHERE p.client_id=a.client_id AND p.status='done' ORDER BY p.date DESC,p.rowid DESC LIMIT 1) last_service " + dayQ + ' ORDER BY a.created_at').bind(me.id, n.date),
+    db.prepare(`SELECT ${ITEM_COLS} FROM bp_items i WHERE i.appt_id IN (SELECT a.id ${dayQ}) ORDER BY i.rowid`).bind(me.id, n.date),
+    db.prepare('SELECT id,name,description,price,stock,track,active' + (owner ? ',low,comm_pct,photo,cost' : '') + ' FROM bp_products ORDER BY active DESC,name'),
+    db.prepare('SELECT COUNT(*) n FROM bp_notif WHERE staff_id=? AND seen=0').bind(me.id),
+    db.prepare('SELECT pin_hash,comm FROM bp_staff WHERE id=?').bind(me.id),
+    db.prepare('SELECT * FROM bp_services ORDER BY price'),
+    ...periodStmts(db)]);
+  const day = r[4].results; day.forEach(a => { a.cumple = !!a.birthday && a.birthday.slice(5) === n.date.slice(5); }); attachRows(day, r[5].results);
+  const sr = r[8].results[0], weak = !!sr && (await weakHashes()).includes(sr.pin_hash);
+  return { me, products: r[6].results, notif: r[7].results[0].n, unrec: r[3].results[0], weak, today: n.date, day, earn: pack(me.role, (sr && sr.comm) ?? +st.commission, [perMap(r[10]), perMap(r[11]), perMap(r[12])], me.id), logo: st.logo || null, services: r[9].results };
+}
+
 async function mine(db, me, id) {
   const a = await db.prepare('SELECT * FROM bp_appts WHERE id=?').bind(id).first();
   if (!a || (me.role !== 'owner' && a.staff_id !== me.id)) throw err(404, 'Turno no encontrado');
@@ -425,11 +477,87 @@ async function runRecurring(db, n) {
     ]);
   }
 }
+async function adminData(db, st, n) {
+  await runRecurring(db, n);
+  const R0 = rng(n.date), pct = +st.commission, m = R0.m, wk = R0.w, Q = [], ix = {};
+  const add = (k, sql, ...a) => { ix[k] = Q.length; Q.push(db.prepare(sql).bind(...a)); };
+  const PAY = "SELECT pay,COALESCE(SUM(amount+prod_total),0) t FROM bp_appts WHERE status='done' AND date BETWEEN ? AND ? GROUP BY pay";
+  periodStmts(db).forEach((s, k) => { ix['per' + k] = Q.length; Q.push(s); });
+  add('staff', "SELECT id,name,role,active,comm FROM bp_staff WHERE active=1 OR id IN (SELECT staff_id FROM bp_appts WHERE status='done' AND date>=?) OR id IN (SELECT staff_id FROM bp_payouts WHERE date>=?) ORDER BY role DESC,active DESC,name", m, m);
+  add('paid', 'SELECT staff_id s,SUM(amount) t FROM bp_payouts WHERE date>=? GROUP BY staff_id', m);
+  add('cashIn', "SELECT COALESCE(SUM(amount+prod_total),0) t FROM bp_appts WHERE status='done' AND pay='efectivo' AND date=?", n.date);
+  add('cashFees', "SELECT COALESCE(SUM(amount),0) t FROM bp_fees WHERE paid=1 AND COALESCE(pay,'efectivo')='efectivo' AND paid_date=?", n.date);
+  add('cashOut', "SELECT COALESCE(SUM(amount),0) t FROM bp_expenses WHERE date=? AND pay='efectivo'", n.date);
+  add('cashClosed', 'SELECT * FROM bp_cash WHERE date=?', n.date);
+  add('cashHist', 'SELECT * FROM bp_cash ORDER BY date DESC LIMIT 10');
+  add('feesM', 'SELECT COALESCE(SUM(amount),0) t FROM bp_fees WHERE paid=1 AND paid_date>=?', m);
+  add('expList', 'SELECT * FROM bp_expenses WHERE date>=? ORDER BY date DESC,rowid DESC', wk < m ? wk : m);
+  add('byPayM', "SELECT pay,COALESCE(SUM(amount+prod_total),0) t FROM bp_appts WHERE status='done' AND date>=? GROUP BY pay", m);
+  add('dm14', "SELECT date d,COALESCE(SUM(amount+prod_total),0) t FROM bp_appts WHERE status='done' AND date>=? GROUP BY date", addD(n.date, -13));
+  add('sAll', 'SELECT id,role,comm FROM bp_staff');
+  const RG = { day: [n.date, n.date, 'today'], week: [wk, n.date, 'week'], month: [m, n.date, 'month'] };
+  for (const [k, [a, b]] of Object.entries(RG)) {
+    add('fFees' + k, 'SELECT COALESCE(SUM(amount),0) t FROM bp_fees WHERE paid=1 AND paid_date BETWEEN ? AND ?', a, b);
+    add('fExp' + k, 'SELECT category,amount FROM bp_expenses WHERE date BETWEEN ? AND ?', a, b);
+    add('fPay' + k, PAY, a, b);
+    add('fPayF' + k, "SELECT COALESCE(pay,'efectivo') pay,COALESCE(SUM(amount),0) t FROM bp_fees WHERE paid=1 AND paid_date BETWEEN ? AND ? GROUP BY 1", a, b);
+    add('fPaid' + k, 'SELECT COALESCE(SUM(amount),0) t FROM bp_payouts WHERE date BETWEEN ? AND ?', a, b);
+    add('fCogs' + k, "SELECT COALESCE(SUM(i.qty*i.cost),0) t FROM bp_items i JOIN bp_appts a ON a.id=i.appt_id WHERE a.status='done' AND a.date BETWEEN ? AND ?", a, b);
+    add('fSales' + k, "SELECT i.name,SUM(i.qty) u,SUM(i.qty*i.price) t FROM bp_items i JOIN bp_appts a ON a.id=i.appt_id WHERE a.status='done' AND a.date BETWEEN ? AND ? GROUP BY i.product_id,i.name ORDER BY t DESC", a, b);
+  }
+  add('clients', "SELECT * FROM bp_clients WHERE id!='c_mostrador' ORDER BY last_visit IS NULL,last_visit DESC LIMIT 300");
+  add('debts', 'SELECT client_id c,SUM(amount) t FROM bp_fees WHERE paid=0 GROUP BY client_id');
+  add('promos', 'SELECT * FROM bp_promos ORDER BY start DESC LIMIT 50');
+  add('sales', "SELECT i.name,SUM(i.qty) u,SUM(i.qty*i.price) t FROM bp_items i JOIN bp_appts a ON a.id=i.appt_id WHERE a.status='done' AND a.date>=? GROUP BY i.product_id,i.name ORDER BY t DESC", m);
+  add('staffAll', 'SELECT id,name,role,active,comm FROM bp_staff ORDER BY role DESC,active DESC,name');
+  add('recurring', 'SELECT * FROM bp_recurring ORDER BY day,concept');
+  const res = await db.batch(Q), rw = k => res[ix[k]].results, one = k => rw(k)[0];   // todo lo anterior: UN solo viaje a D1
+  const rows = [perMap(res[ix.per0]), perMap(res[ix.per1]), perMap(res[ix.per2])], staff = rw('staff');
+  const paid = Object.fromEntries(rw('paid').map(r => [r.s, r.t]));
+  const cashIn = one('cashIn').t + one('cashFees').t, cashOut = one('cashOut').t, cash = cashIn;
+  const caja = { in: cashIn, out: cashOut, expected: cashIn - cashOut, closed: one('cashClosed') || null, history: rw('cashHist') };
+  const team = staff.map(s => ({ id: s.id, name: s.name, role: s.role, active: !!s.active, paid: paid[s.id] || 0, comm: s.comm, ...pack(s.role, s.comm ?? pct, rows, s.id) }));
+  const fees = one('feesM').t;
+  const month = { income: team.reduce((t, x) => t + x.month.t, 0) + fees, fees, products: team.reduce((t, x) => t + x.month.p, 0), commissions: team.reduce((t, x) => t + x.month.c, 0) };
+  const expList = rw('expList'), exp = expList.filter(e => e.date >= m);
+  month.byCat = {}; for (const e of exp) { const k = e.category || 'Otros'; month.byCat[k] = (month.byCat[k] || 0) + e.amount; }
+  month.byPay = { efectivo: 0, transferencia: 0 }; for (const r of rw('byPayM')) month.byPay[r.pay === 'transferencia' ? 'transferencia' : 'efectivo'] += r.t;
+  const dm14 = Object.fromEntries(rw('dm14').map(r => [r.d, r.t]));
+  const daily = Array.from({ length: 14 }, (_, i) => { const d = addD(n.date, i - 13); return { d, t: dm14[d] || 0 }; });
+  month.expenses = exp.reduce((t, x) => t + x.amount, 0); month.net = month.income - month.commissions - month.expenses;
+  const sAll = rw('sAll'), fin = {};
+  for (const [k, [a, b, pk]] of Object.entries(RG)) {
+    const pc = sAll.map(s => pack(s.role, s.comm ?? pct, rows, s.id)[pk]);
+    const f = { from: a, to: b, products: pc.reduce((t, x) => t + x.p, 0), commissions: pc.reduce((t, x) => t + x.c, 0) };
+    f.fees = one('fFees' + k).t;
+    f.income = pc.reduce((t, x) => t + x.t, 0) + f.fees;
+    const ex = rw('fExp' + k);
+    f.byCat = {}; for (const e of ex) { const c = e.category || 'Otros'; f.byCat[c] = (f.byCat[c] || 0) + e.amount; }
+    f.expenses = ex.reduce((t, x) => t + x.amount, 0); f.net = f.income - f.commissions - f.expenses;
+    f.byPay = { efectivo: 0, transferencia: 0 };
+    for (const r of rw('fPay' + k)) f.byPay[r.pay === 'transferencia' ? 'transferencia' : 'efectivo'] += r.t;
+    for (const r of rw('fPayF' + k)) f.byPay[r.pay === 'transferencia' ? 'transferencia' : 'efectivo'] += r.t;
+    f.paid = one('fPaid' + k).t; f.cogs = one('fCogs' + k).t; f.sales = rw('fSales' + k);
+    fin[k] = f;
+  }
+  const clients = rw('clients'), debts = Object.fromEntries(rw('debts').map(r => [r.c, r.t]));
+  clients.forEach(c => { c.debt = debts[c.id] || 0; });
+  const staff_all = rw('staffAll').map(s => ({ ...s, active: !!s.active }));
+  return { daily, sales: rw('sales'), staff_all, promos: rw('promos'), cash, caja, recurring: rw('recurring'), team, month, fin, expenses: expList, clients, settings: { name: st.name, commission: +st.commission, address: st.address || '', phone: st.phone || '', instagram: st.instagram || '', schedule: JSON.parse(st.schedule || '{}'), book_days: +st.book_days || 3, slot_step: +st.slot_step || 15, logo: st.logo || null, late_mode: ['off', 'fee'].includes(st.late_mode) ? st.late_mode : 'warn', late_hours: +st.late_hours || 1, late_pct: +st.late_pct || 50, pin_max: +st.pin_max || 5, pin_lock: +st.pin_lock || 15, security: { question: st.sec_q || '', set: !!st.sec_a } }, today: n.date, now: n.date + 'T' + hm(n.min) };
+}
+
 async function route(req, db, u, p, env, ctx) {
   const B = req.method === 'POST' ? await req.json().catch(() => ({})) : {}, n = now();
   if (p === '/api/public') {
-    const prods = (await db.prepare('SELECT id,name,description,price,stock,track,photo FROM bp_products WHERE active=1 ORDER BY name').all()).results.map(p => ({ id: p.id, name: p.name, description: p.description || '', price: p.price, photo: p.photo, left: p.track ? Math.max(0, p.stock) : null, soldout: !!p.track && p.stock <= 0 }));
-    const [st, sv, ss, pr] = await Promise.all([cfg(db), db.prepare('SELECT * FROM bp_services ORDER BY price').all(), db.prepare('SELECT id,name,role FROM bp_staff WHERE active=1 ORDER BY role DESC,name').all(), promosNow(db)]);
+    const t = n.date + 'T' + hm(n.min);
+    if (u.searchParams.get('lite')) { // login de Gestión: solo nombre, logo y equipo
+      const [a, b] = await db.batch([db.prepare('SELECT k,v FROM bp_settings'), db.prepare('SELECT id,name,role FROM bp_staff WHERE active=1 ORDER BY role DESC,name')]);
+      const c = Object.fromEntries(a.results.map(r => [r.k, r.v]));
+      return J(200, { name: c.name, logo: c.logo || null, staff: b.results });
+    }
+    const [a, b, c, d, e] = await db.batch([db.prepare('SELECT k,v FROM bp_settings'), db.prepare('SELECT * FROM bp_services ORDER BY price'), db.prepare('SELECT id,name,role FROM bp_staff WHERE active=1 ORDER BY role DESC,name'), db.prepare('SELECT * FROM bp_promos WHERE active=1 AND start<=? AND end>?').bind(t, t), db.prepare('SELECT id,name,description,price,stock,track,photo FROM bp_products WHERE active=1 ORDER BY name')]);
+    const st = Object.fromEntries(a.results.map(r => [r.k, r.v])), sv = b, ss = c, pr = d.results;
+    const prods = e.results.map(p => ({ id: p.id, name: p.name, description: p.description || '', price: p.price, photo: p.photo, left: p.track ? Math.max(0, p.stock) : null, soldout: !!p.track && p.stock <= 0 }));
     return J(200, { name: st.name, address: st.address || '', phone: st.phone || '', instagram: st.instagram || '', logo: st.logo || null, late: { mode: ['off', 'fee'].includes(st.late_mode) ? st.late_mode : 'warn', hours: +st.late_hours || 1, pct: +st.late_pct || 50 }, days: +st.book_days || 3, promos: pr, services: sv.results.filter(s => s.online && !s.addon).map(s => withPromo(pr, s)), addons: sv.results.filter(s => s.online && s.addon), products: prods, staff: ss.results, today: n.date });
   }
   if (p.startsWith('/api/img/')) {
@@ -524,15 +652,11 @@ async function route(req, db, u, p, env, ctx) {
     ctx.waitUntil(notifyStaff(env, db, a.staff_id, `Turno cancelado${late ? ' a último momento' : ''}: ${a.date.slice(8)}/${a.date.slice(5, 7)} ${a.time}${fee ? ' · Cobrar ' + money(fee) : ''}`, 'cancel'));
     return J(200, { ok: true, late, fee });
   }
-  const me = await who(req, db); if (!me) throw err(401, 'Sesión vencida');
-  const st = await cfg(db);
-  if (p === '/api/me') {
-    await closeOld(db);
-    const un = await db.prepare("SELECT COUNT(*) n,MAX(date) d FROM bp_appts WHERE status='unrecorded' AND date>=?" + (me.role === 'owner' ? '' : ' AND staff_id=?')).bind(...(me.role === 'owner' ? [addD(n.date, -14)] : [addD(n.date, -14), me.id])).first();
-    const day = (await db.prepare("SELECT a.id,a.kind,a.time,a.service_id,a.service_name,a.price,a.status,a.created_at,a.extras,a.pay,c.id client_id,c.notes,(SELECT COALESCE(SUM(f.amount),0) FROM bp_fees f WHERE f.client_id=c.id AND f.paid=0) debt,c.name cname,c.whatsapp,c.birthday,c.last_visit,c.visits,(SELECT p.service_name FROM bp_appts p WHERE p.client_id=a.client_id AND p.status='done' ORDER BY p.date DESC,p.rowid DESC LIMIT 1) last_service FROM bp_appts a JOIN bp_clients c ON c.id=a.client_id WHERE a.staff_id=? AND a.date=? AND a.status!='cancelled' ORDER BY a.created_at").bind(me.id, n.date).all()).results;
-    day.forEach(a => { a.cumple = !!a.birthday && a.birthday.slice(5) === n.date.slice(5); });
-    await attachItems(db, day);
-    return J(200, { me, products: (await db.prepare('SELECT id,name,description,price,stock,track,active' + (me.role === 'owner' ? ',low,comm_pct,photo,cost' : '') + ' FROM bp_products ORDER BY active DESC,name').all()).results, notif: (await db.prepare('SELECT COUNT(*) n FROM bp_notif WHERE staff_id=? AND seen=0').bind(me.id).first()).n, unrec: un, weak: await weakPin(db, me.id), today: n.date, day, earn: pack(me.role, (await db.prepare('SELECT comm FROM bp_staff WHERE id=?').bind(me.id).first()).comm ?? +st.commission, await periods(db), me.id), logo: st.logo || null, services: (await db.prepare('SELECT * FROM bp_services ORDER BY price').all()).results });
+  const [me, st] = await whoCfg(req, db); if (!me) throw err(401, 'Sesión vencida');
+  if (p === '/api/me') return J(200, await meData(db, me, st, n));
+  if (p === '/api/boot') { // todo lo que Gestión necesita al abrir, en una sola petición
+    const [m, a] = await Promise.all([meData(db, me, st, n), me.role === 'owner' ? adminData(db, st, n) : null]);
+    return J(200, { ...m, admin: a });
   }
   if (p === '/api/appt/done' && req.method === 'POST') {
     const a = await mine(db, me, B.id); let { service_id: sid, service_name: sn, price: pr, duration: du } = a;
@@ -587,14 +711,16 @@ async function route(req, db, u, p, env, ctx) {
     return J(200, { ok: true });
   }
   if (p === '/api/agenda') {
-    await closeOld(db);
     const d = u.searchParams.get('date') || n.date; if (!isDate(d)) throw err(400, 'Fecha inválida');
     const sid = me.role === 'owner' ? (u.searchParams.get('staff') || 'all') : me.id, one = sid !== 'all';
-    const appts = (await db.prepare(`SELECT a.id,a.kind,a.date,a.time,a.duration,a.staff_id,a.service_id,a.service_name,a.price,a.status,a.created_at,a.extras,c.id client_id,c.notes,(SELECT COALESCE(SUM(f.amount),0) FROM bp_fees f WHERE f.client_id=c.id AND f.paid=0) debt,c.name cname,c.whatsapp,c.birthday,c.visits,s.name sname FROM bp_appts a JOIN bp_clients c ON c.id=a.client_id JOIN bp_staff s ON s.id=a.staff_id WHERE a.kind='turno' AND a.date=? AND a.status!='cancelled' ${one ? 'AND a.staff_id=?' : ''} ORDER BY a.time`).bind(...(one ? [d, sid] : [d])).all()).results;
-    appts.forEach(a => { a.cumple = !!a.birthday && a.birthday.slice(5) === d.slice(5); });
-    await attachItems(db, appts);
-    const blocks = (await db.prepare(`SELECT b.*,s.name sname FROM bp_blocks b LEFT JOIN bp_staff s ON s.id=b.staff_id WHERE b.d2>=? ${one ? 'AND (b.staff_id IS NULL OR b.staff_id=?)' : ''} ORDER BY b.d1,b.t1`).bind(...(one ? [n.date, sid] : [n.date])).all()).results;
-    return J(200, { date: d, today: n.date, appts, blocks });
+    const W = `FROM bp_appts a JOIN bp_clients c ON c.id=a.client_id JOIN bp_staff s ON s.id=a.staff_id WHERE a.kind='turno' AND a.date=? AND a.status!='cancelled' ${one ? 'AND a.staff_id=?' : ''}`, wa = one ? [d, sid] : [d];
+    const r = await db.batch([...closeOldStmts(db),
+      db.prepare(`SELECT a.id,a.kind,a.date,a.time,a.duration,a.staff_id,a.service_id,a.service_name,a.price,a.status,a.created_at,a.extras,c.id client_id,c.notes,(SELECT COALESCE(SUM(f.amount),0) FROM bp_fees f WHERE f.client_id=c.id AND f.paid=0) debt,c.name cname,c.whatsapp,c.birthday,c.visits,s.name sname ${W} ORDER BY a.time`).bind(...wa),
+      db.prepare(`SELECT ${ITEM_COLS} FROM bp_items i WHERE i.appt_id IN (SELECT a.id ${W}) ORDER BY i.rowid`).bind(...wa),
+      db.prepare(`SELECT b.*,s.name sname FROM bp_blocks b LEFT JOIN bp_staff s ON s.id=b.staff_id WHERE b.d2>=? ${one ? 'AND (b.staff_id IS NULL OR b.staff_id=?)' : ''} ORDER BY b.d1,b.t1`).bind(...(one ? [n.date, sid] : [n.date]))]);
+    const appts = r[3].results; appts.forEach(a => { a.cumple = !!a.birthday && a.birthday.slice(5) === d.slice(5); });
+    attachRows(appts, r[4].results);
+    return J(200, { date: d, today: n.date, appts, blocks: r[5].results });
   }
   if (p === '/api/appt/create' && req.method === 'POST') {
     const sf = me.role === 'owner' ? await staffOk(db, B.staff) : { id: me.id, name: me.name }, s0 = await svcOf(db, B.service, false), s = await withExtras(db, s0, B.extras, s0.id, true);
@@ -648,9 +774,10 @@ async function route(req, db, u, p, env, ctx) {
     return J(200, { ok: true });
   }
   if (p === '/api/notifs') {
-    const unread = async () => (await db.prepare('SELECT COUNT(*) n FROM bp_notif WHERE staff_id=? AND seen=0').bind(me.id).first()).n;
-    if (u.searchParams.get('count')) return J(200, { unread: await unread() });
-    return J(200, { items: (await db.prepare('SELECT id,kind,body,seen,created_at FROM bp_notif WHERE staff_id=? AND kind!=? ORDER BY rowid DESC LIMIT 50').bind(me.id, 'reminder').all()).results, unread: await unread() });
+    const cnt = db.prepare('SELECT COUNT(*) n FROM bp_notif WHERE staff_id=? AND seen=0').bind(me.id);
+    if (u.searchParams.get('count')) return J(200, { unread: (await cnt.first()).n });
+    const [a, b] = await db.batch([db.prepare('SELECT id,kind,body,seen,created_at FROM bp_notif WHERE staff_id=? AND kind!=? ORDER BY rowid DESC LIMIT 50').bind(me.id, 'reminder'), cnt]);
+    return J(200, { items: a.results, unread: b.results[0].n });
   }
   if (p === '/api/notifs/read' && req.method === 'POST') {
     if (B.all) await db.prepare('UPDATE bp_notif SET seen=1 WHERE staff_id=?').bind(me.id).run();
@@ -669,48 +796,7 @@ async function route(req, db, u, p, env, ctx) {
     return J(200, { ok: true });
   }
   if (me.role !== 'owner') throw err(403, 'Solo el dueño puede ver esto');
-  if (p === '/api/admin') {
-    await runRecurring(db, n);
-    const rows = await periods(db), staff = (await db.prepare("SELECT id,name,role,active,comm FROM bp_staff WHERE active=1 OR id IN (SELECT staff_id FROM bp_appts WHERE status='done' AND date>=?) OR id IN (SELECT staff_id FROM bp_payouts WHERE date>=?) ORDER BY role DESC,active DESC,name").bind(rng(n.date).m, rng(n.date).m).all()).results, pct = +st.commission;
-    const paid = Object.fromEntries((await db.prepare('SELECT staff_id s,SUM(amount) t FROM bp_payouts WHERE date>=? GROUP BY staff_id').bind(rng(n.date).m).all()).results.map(r => [r.s, r.t]));
-    const cashIn = (await db.prepare("SELECT COALESCE(SUM(amount+prod_total),0) t FROM bp_appts WHERE status='done' AND pay='efectivo' AND date=?").bind(n.date).first()).t + (await db.prepare("SELECT COALESCE(SUM(amount),0) t FROM bp_fees WHERE paid=1 AND COALESCE(pay,'efectivo')='efectivo' AND paid_date=?").bind(n.date).first()).t;
-    const cashOut = (await db.prepare("SELECT COALESCE(SUM(amount),0) t FROM bp_expenses WHERE date=? AND pay='efectivo'").bind(n.date).first()).t, cash = cashIn;
-    const caja = { in: cashIn, out: cashOut, expected: cashIn - cashOut, closed: (await db.prepare('SELECT * FROM bp_cash WHERE date=?').bind(n.date).first()) || null, history: (await db.prepare('SELECT * FROM bp_cash ORDER BY date DESC LIMIT 10').all()).results };
-    const team = staff.map(s => ({ id: s.id, name: s.name, role: s.role, active: !!s.active, paid: paid[s.id] || 0, comm: s.comm, ...pack(s.role, s.comm ?? pct, rows, s.id) }));
-    const fees = (await db.prepare('SELECT COALESCE(SUM(amount),0) t FROM bp_fees WHERE paid=1 AND paid_date>=?').bind(rng(n.date).m).first()).t;
-    const month = { income: team.reduce((t, x) => t + x.month.t, 0) + fees, fees, products: team.reduce((t, x) => t + x.month.p, 0), commissions: team.reduce((t, x) => t + x.month.c, 0) };
-    const exp = (await db.prepare('SELECT * FROM bp_expenses WHERE date>=? ORDER BY date DESC,rowid DESC').bind(rng(n.date).m).all()).results;
-    const R0 = rng(n.date), expList = (await db.prepare('SELECT * FROM bp_expenses WHERE date>=? ORDER BY date DESC,rowid DESC').bind(R0.w < R0.m ? R0.w : R0.m).all()).results;
-    month.byCat = {}; for (const e of exp) { const k = e.category || 'Otros'; month.byCat[k] = (month.byCat[k] || 0) + e.amount; }
-    month.byPay = { efectivo: 0, transferencia: 0 }; for (const r of (await db.prepare("SELECT pay,COALESCE(SUM(amount+prod_total),0) t FROM bp_appts WHERE status='done' AND date>=? GROUP BY pay").bind(rng(n.date).m).all()).results) month.byPay[r.pay === 'transferencia' ? 'transferencia' : 'efectivo'] += r.t;
-    const dm14 = Object.fromEntries((await db.prepare("SELECT date d,COALESCE(SUM(amount+prod_total),0) t FROM bp_appts WHERE status='done' AND date>=? GROUP BY date").bind(addD(n.date, -13)).all()).results.map(r => [r.d, r.t]));
-    const daily = Array.from({ length: 14 }, (_, i) => { const d = addD(n.date, i - 13); return { d, t: dm14[d] || 0 }; });
-    month.expenses = exp.reduce((t, x) => t + x.amount, 0); month.net = month.income - month.commissions - month.expenses;
-    const RG = { day: [n.date, n.date, 'today'], week: [R0.w, n.date, 'week'], month: [R0.m, n.date, 'month'] }, sAll = (await db.prepare('SELECT id,role,comm FROM bp_staff').all()).results, fin = {};
-    for (const [k, [a, b, pk]] of Object.entries(RG)) {
-      const pc = sAll.map(s => pack(s.role, s.comm ?? pct, rows, s.id)[pk]);
-      const f = { from: a, to: b, products: pc.reduce((t, x) => t + x.p, 0), commissions: pc.reduce((t, x) => t + x.c, 0) };
-      f.fees = (await db.prepare('SELECT COALESCE(SUM(amount),0) t FROM bp_fees WHERE paid=1 AND paid_date BETWEEN ? AND ?').bind(a, b).first()).t;
-      f.income = pc.reduce((t, x) => t + x.t, 0) + f.fees;
-      const ex = (await db.prepare('SELECT category,amount FROM bp_expenses WHERE date BETWEEN ? AND ?').bind(a, b).all()).results;
-      f.byCat = {}; for (const e of ex) { const c = e.category || 'Otros'; f.byCat[c] = (f.byCat[c] || 0) + e.amount; }
-      f.expenses = ex.reduce((t, x) => t + x.amount, 0); f.net = f.income - f.commissions - f.expenses;
-      f.byPay = { efectivo: 0, transferencia: 0 };
-      for (const r of (await db.prepare("SELECT pay,COALESCE(SUM(amount+prod_total),0) t FROM bp_appts WHERE status='done' AND date BETWEEN ? AND ? GROUP BY pay").bind(a, b).all()).results) f.byPay[r.pay === 'transferencia' ? 'transferencia' : 'efectivo'] += r.t;
-      for (const r of (await db.prepare("SELECT COALESCE(pay,'efectivo') pay,COALESCE(SUM(amount),0) t FROM bp_fees WHERE paid=1 AND paid_date BETWEEN ? AND ? GROUP BY 1").bind(a, b).all()).results) f.byPay[r.pay === 'transferencia' ? 'transferencia' : 'efectivo'] += r.t;
-      f.paid = (await db.prepare('SELECT COALESCE(SUM(amount),0) t FROM bp_payouts WHERE date BETWEEN ? AND ?').bind(a, b).first()).t;
-      f.cogs = (await db.prepare("SELECT COALESCE(SUM(i.qty*i.cost),0) t FROM bp_items i JOIN bp_appts a ON a.id=i.appt_id WHERE a.status='done' AND a.date BETWEEN ? AND ?").bind(a, b).first()).t;
-      f.sales = (await db.prepare("SELECT i.name,SUM(i.qty) u,SUM(i.qty*i.price) t FROM bp_items i JOIN bp_appts a ON a.id=i.appt_id WHERE a.status='done' AND a.date BETWEEN ? AND ? GROUP BY i.product_id,i.name ORDER BY t DESC").bind(a, b).all()).results;
-      fin[k] = f;
-    }
-    const clients = (await db.prepare("SELECT * FROM bp_clients WHERE id!='c_mostrador' ORDER BY last_visit IS NULL,last_visit DESC LIMIT 300").all()).results, debts = Object.fromEntries((await db.prepare('SELECT client_id c,SUM(amount) t FROM bp_fees WHERE paid=0 GROUP BY client_id').all()).results.map(r => [r.c, r.t]));
-    clients.forEach(c => { c.debt = debts[c.id] || 0; });
-    const promos = (await db.prepare('SELECT * FROM bp_promos ORDER BY start DESC LIMIT 50').all()).results;
-    const sales = (await db.prepare("SELECT i.name,SUM(i.qty) u,SUM(i.qty*i.price) t FROM bp_items i JOIN bp_appts a ON a.id=i.appt_id WHERE a.status='done' AND a.date>=? GROUP BY i.product_id,i.name ORDER BY t DESC").bind(rng(n.date).m).all()).results;
-    const staff_all = (await db.prepare('SELECT id,name,role,active,comm FROM bp_staff ORDER BY role DESC,active DESC,name').all()).results.map(s => ({ ...s, active: !!s.active }));
-    const recurring = (await db.prepare('SELECT * FROM bp_recurring ORDER BY day,concept').all()).results;
-    return J(200, { daily, sales, staff_all, promos, cash, caja, recurring, team, month, fin, expenses: expList, clients, settings: { name: st.name, commission: +st.commission, address: st.address || '', phone: st.phone || '', instagram: st.instagram || '', schedule: JSON.parse(st.schedule || '{}'), book_days: +st.book_days || 3, slot_step: +st.slot_step || 15, logo: st.logo || null, late_mode: ['off', 'fee'].includes(st.late_mode) ? st.late_mode : 'warn', late_hours: +st.late_hours || 1, late_pct: +st.late_pct || 50, pin_max: +st.pin_max || 5, pin_lock: +st.pin_lock || 15, security: { question: st.sec_q || '', set: !!st.sec_a } }, today: n.date, now: n.date + 'T' + hm(n.min) });
-  }
+  if (p === '/api/admin') return J(200, await adminData(db, st, n));
   if (p === '/api/admin/expense' && req.method === 'POST') {
     const c = String(B.concept || '').trim().slice(0, 80), a = Math.round(+B.amount), d = B.date ? String(B.date) : n.date, pay = B.cash ? 'efectivo' : null;
     const cat = ['Alquiler', 'Insumos', 'Servicios', 'Publicidad', 'Sueldos', 'Otros'].includes(B.category) ? B.category : 'Otros';
@@ -983,6 +1069,7 @@ export default {
   async fetch(req, env, ctx) {
     const u = new URL(req.url), p = u.pathname;
     if (!p.startsWith('/api/')) return env.ASSETS.fetch(req);
+    if (/^\/api\/img\/static-[a-z]+$/.test(p)) return new Response(null, { status: 302, headers: { location: u.origin + '/img/' + p.slice(16) + '.webp', 'cache-control': 'public, max-age=86400' } });
     if (!env.DB) return J(500, { error: 'Falta el binding D1 llamado DB.' });
     try { await init(env.DB); return await route(req, env.DB, u, p, env, ctx); }
     catch (e) { return J(e.status || 400, { error: e.message, ...(e.soft ? { soft: true } : {}), ...(e.late ? { late: true, fee: e.fee } : {}) }); }
