@@ -1,6 +1,7 @@
 // Service worker: app instalable + avisos push (mismo sistema que Melly Barber y BarberFlowBR). Nunca guarda /api (siempre datos en vivo).
+const CACHE='bp3';
 self.addEventListener('install',()=>self.skipWaiting());
-self.addEventListener('activate',e=>e.waitUntil(self.clients.claim()));
+self.addEventListener('activate',e=>e.waitUntil((async()=>{for(const k of await caches.keys())if(k!==CACHE)await caches.delete(k);await self.clients.claim()})()));
 self.addEventListener('push',e=>{
   let d={};try{d=e.data?e.data.json():{}}catch(_){d={body:e.data?e.data.text():''}}
   e.waitUntil((async()=>{
@@ -18,5 +19,12 @@ self.addEventListener('notificationclick',e=>{
     return self.clients.openWindow(target.href);
   })());
 });
-self.addEventListener('fetch',e=>{const u=new URL(e.request.url);if(e.request.method!=='GET'||u.pathname.startsWith('/api/'))return;
-  e.respondWith(fetch(e.request).then(r=>{if(r.ok&&u.origin===location.origin){const c=r.clone();caches.open('bp2').then(k=>k.put(e.request,c))}return r}).catch(()=>caches.match(e.request)))});
+// Páginas: red primero (siempre la versión nueva; sin red, la última guardada).
+// CSS, JS e imágenes: salen al instante de la caché y se actualizan en segundo plano (la versión nueva se ve en la siguiente apertura).
+const STATIC=/\.(?:css|js|png|webp|jpg|svg|ico|webmanifest)$/;
+self.addEventListener('fetch',e=>{const r=e.request,u=new URL(r.url);if(r.method!=='GET'||u.origin!==location.origin||u.pathname.startsWith('/api/'))return;
+  if(r.mode!=='navigate'&&STATIC.test(u.pathname)){
+    e.respondWith(caches.open(CACHE).then(async c=>{const hit=await c.match(r);
+      const net=fetch(r).then(x=>{if(x.ok)c.put(r,x.clone());return x}).catch(()=>hit);
+      if(hit){e.waitUntil(net);return hit}return net}));return}
+  e.respondWith(fetch(r).then(x=>{if(x.ok){const c=x.clone();caches.open(CACHE).then(k=>k.put(r,c))}return x}).catch(()=>caches.match(r)))});
