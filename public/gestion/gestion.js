@@ -261,17 +261,28 @@ function newSheet(){const owner=M.me.role==='owner';
   <div class="field"><label>Día</label><input id="nd" type="date" min="${M.today}" value="${AG?AG.date:M.today}"></div><div class="field"><label>Hora</label><input id="nh" type="time"></div>
   <div class="field"><label>Nombre del cliente</label><input id="nn" autocomplete="off"></div><div class="field"><label>WhatsApp</label><div class="pair"><input class="prefix" value="+54 9" disabled aria-label="Prefijo"><input id="nw" inputmode="tel" placeholder="2477 201614"></div></div>
   <div class="field"><label>Precio</label><input id="np" type="number" inputmode="numeric" value="${(M.services.find(s=>!s.addon)||{}).price||''}"></div><p class="err" id="ne"></p><button class="btn primary" onclick="saveNew()">Guardar turno</button>`)}
-async function saveNew(force){const b={staff:($('nbar')||{}).value,service:$('ns').value,extras:exSel(),products:pqSel(),date:$('nd').value,time:$('nh').value,name:$('nn').value,whatsapp:formatWA($('nw').value),price:$('np').value,force:!!force};
-  try{await post('/appt/create',b);closeSheet();AG=null;await load();draw();toast('Turno cargado')}
-  catch(e){if(e.data&&e.data.soft){if(await confirmD(e.message+' ¿Cargarlo igual?','Cargar igual'))return saveNew(true)}else $('ne').textContent=e.message}}
+let saveBusy=false;/* solo dueño: evita que un doble toque cargue el turno dos veces */
+async function saveNew(force){const own=M.me.role==='owner';if(own&&saveBusy)return;
+  const b={staff:($('nbar')||{}).value,service:$('ns').value,extras:exSel(),products:pqSel(),date:$('nd').value,time:$('nh').value,name:$('nn').value,whatsapp:formatWA($('nw').value),price:$('np').value,force:!!force};
+  saveBusy=own;
+  try{
+    if(own&&force!==true&&b.name.trim()&&b.whatsapp&&b.date&&b.time&&!await confirmD(`¿Cargar este turno?\n\n${b.name.trim()} · ${$('ns').selectedOptions[0].text}\n${dm(b.date)} a las ${b.time} · ${($('nbar').selectedOptions[0]||{}).text||''}`,'Cargar turno'))return;
+    await post('/appt/create',b);closeSheet();AG=null;await load();draw();toast('Turno cargado')}
+  catch(e){saveBusy=false;if(e.data&&e.data.soft){if(await confirmD(e.message+' ¿Cargarlo igual?','Cargar igual'))return saveNew(true)}else $('ne').textContent=e.message}
+  finally{saveBusy=false}}
 function filaSheet(){
   sheet(`<h2>Cargar en la fila</h2><p class="sub">Para quien llegó sin turno. Queda en la fila general; al marcarlo Hecho ${M.me.role==='owner'?'indicás de quién fue el corte':'queda a tu nombre'}.</p>
   <div class="field"><label>Servicio</label><select id="ns" onchange="exCalc()">${svOpts()}</select></div>${exBoxes([])}${prodBoxes({})}
   <div class="field"><label>Nombre del cliente</label><input id="nn" autocomplete="off"></div><div class="field"><label>WhatsApp</label><div class="pair"><input class="prefix" value="+54 9" disabled aria-label="Prefijo"><input id="nw" inputmode="tel" placeholder="2477 201614"></div></div>
   <div class="field"><label>Precio</label><input id="np" type="number" inputmode="numeric" value="${(M.services.find(s=>!s.addon)||{}).price||''}"></div><p class="err" id="ne"></p><button class="btn primary" onclick="saveFila()">Anotar en la fila</button>`)}
-async function saveFila(){const b={service:$('ns').value,extras:exSel(),products:pqSel(),name:$('nn').value,whatsapp:formatWA($('nw').value),price:$('np').value};
-  try{const r=await post('/queue/add',b);closeSheet();AG=null;await load();draw();toast('Anotado en la fila · lugar '+r.position)}
-  catch(e){$('ne').textContent=e.message}}
+async function saveFila(){const own=M.me.role==='owner';if(own&&saveBusy)return;
+  const b={service:$('ns').value,extras:exSel(),products:pqSel(),name:$('nn').value,whatsapp:formatWA($('nw').value),price:$('np').value};
+  saveBusy=own;
+  try{
+    if(own&&b.name.trim()&&b.whatsapp&&!await confirmD(`¿Anotar en la fila?\n\n${b.name.trim()} · ${$('ns').selectedOptions[0].text}`,'Anotar'))return;
+    const r=await post('/queue/add',b);closeSheet();AG=null;await load();draw();toast('Anotado en la fila · lugar '+r.position)}
+  catch(e){$('ne').textContent=e.message}
+  finally{saveBusy=false}}
 function moveSheet(id){const a=findAppt(id),t=a.kind==='turno',owner=M.me.role==='owner';
   sheet(`<h2>${esc(a.cname)}</h2><p class="sub">${t?'Cambiá el día, la hora, el servicio o el precio.':'Cambiá el servicio o el precio.'}</p>
   <div class="field"><label>Servicio</label><select id="ms" onchange="exCalc()">${svOpts(a.service_id)}</select></div>${exBoxes(JSON.parse(a.extras||'[]').map(x=>x.id))}${prodBoxes(Object.fromEntries((a.items||[]).map(i=>[i.product_id,i.qty])))}
@@ -292,7 +303,10 @@ function fixSheet(id){const a=findAppt(id),mo=a.client_id==='c_mostrador';
   <div class="field"><label>Nombre del cliente</label><input id="fn" type="text" maxlength="80" value="${mo?'':esc(a.cname)}"></div>
   <div class="field"><label>WhatsApp del cliente</label><input id="fw" type="tel" inputmode="tel" value="${mo?'':esc(displayWA(a.whatsapp))}"></div>
   <p class="hint">Si el WhatsApp ya es de otro cliente, el corte pasa a ese cliente. Si no, se corrigen los datos de este.</p>
-  <p class="err" id="fe"></p><button class="btn primary" onclick="saveFix('${id}')">Guardar cambios</button>`)}
+  <p class="err" id="fe"></p><button class="btn primary" onclick="saveFix('${id}')">Guardar cambios</button><button class="btn danger" style="margin-top:10px;width:100%" onclick="delDone('${id}')">Eliminar turno</button>`)}
+async function delDone(id){const a=findAppt(id);if(!a)return;
+  if(!await confirmD(`¿Eliminar el turno hecho de ${a.cname}${a.date?' del '+dm(a.date):''}${a.time?' a las '+a.time:''} (${a.service_name})?\n\nSale de la caja y de las visitas del cliente, y los productos vuelven al stock. No se puede deshacer.`,'Eliminar',true))return;
+  try{await post('/appt/del-done',{id});closeSheet();AG=null;await load();draw();toast('Turno eliminado')}catch(e){alertD(e.message)}}
 async function saveFix(id){const a=findAppt(id),b={id,service:$('fs').value,amount:$('fa').value,staff:$('fb').value,name:$('fn').value,whatsapp:$('fw').value};
   try{const r=await post('/appt/fix',b);closeSheet();AG=null;await load();draw();toast(r.changed?'Turno corregido':'Sin cambios')}catch(e){$('fe').textContent=e.message}}
 function blkSheet(){const owner=M.me.role==='owner';
