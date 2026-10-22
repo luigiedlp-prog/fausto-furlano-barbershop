@@ -895,6 +895,22 @@ async function route(req, db, u, p, env, ctx) {
     return J(200, { ok: true, changed: true });
   }
 
+  if (p === '/api/appt/del-done' && req.method === 'POST') { // solo el dueño: elimina un turno hecho (p. ej. uno cargado dos veces). Sale de la caja y de las visitas del cliente, y los productos vuelven al stock
+    if (me.role !== 'owner') throw err(403, 'Solo el dueño puede eliminar un turno hecho');
+    const a = await db.prepare("SELECT a.*,c.name cname FROM bp_appts a JOIN bp_clients c ON c.id=a.client_id WHERE a.id=? AND a.status='done' AND a.kind IN('turno','fila')").bind(String(B.id || '')).first();
+    if (!a) throw err(404, 'Turno hecho no encontrado (puede que ya lo hayan eliminado)');
+    if (a.ext_src === SYNC_SRC) throw err(409, 'Este turno viene de la agenda de Santi: no se puede eliminar desde acá.');
+    const its = (await db.prepare('SELECT product_id,qty,held FROM bp_items WHERE appt_id=?').bind(a.id).all()).results;
+    await db.batch([
+      ...its.filter(i => i.held).map(i => db.prepare('UPDATE bp_products SET stock=stock+? WHERE id=?').bind(i.qty, i.product_id)),
+      db.prepare('DELETE FROM bp_items WHERE appt_id=?').bind(a.id),
+      db.prepare('DELETE FROM bp_sync_out WHERE appt_id=?').bind(a.id),
+      db.prepare('DELETE FROM bp_appts WHERE id=?').bind(a.id),
+      db.prepare("UPDATE bp_clients SET visits=MAX(visits-1,0),total_spent=MAX(total_spent-?,0),last_visit=(SELECT MAX(date) FROM bp_appts WHERE client_id=? AND status='done' AND kind IN('turno','fila')) WHERE id=?").bind((a.amount || 0) + (a.prod_total || 0), a.client_id, a.client_id)]);
+    await audit(db, me, 'Eliminó un turno hecho', `${a.cname} · ${fd(a.date)} ${a.time || ''} · ${a.service_name} · ${money((a.amount || 0) + (a.prod_total || 0))}`);
+    return J(200, { ok: true });
+  }
+
   if (p === '/api/sale' && req.method === 'POST') {
     const sf = me.role === 'owner' && B.staff ? await staffOk(db, B.staff) : { id: me.id, name: me.name }, pay = B.pay === 'transferencia' ? 'transferencia' : 'efectivo';
     if (!B.force && (await db.prepare("SELECT id FROM bp_appts WHERE kind='venta' AND status='done' AND staff_id=? AND created_at>=datetime('now','-10 seconds')").bind(sf.id).first())) throw Object.assign(err(409, 'Acabás de registrar otra venta hace unos segundos.'), { soft: true });
