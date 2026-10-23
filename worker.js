@@ -948,7 +948,7 @@ async function route(req, db, u, p, env, ctx) {
     const sid = me.role === 'owner' ? (u.searchParams.get('staff') || 'all') : me.id, one = sid !== 'all';
     const W = `FROM bp_appts a JOIN bp_clients c ON c.id=a.client_id JOIN bp_staff s ON s.id=a.staff_id WHERE a.kind='turno' AND a.date=? AND a.status!='cancelled' ${one ? 'AND a.staff_id=?' : ''}`, WF = `FROM bp_appts a JOIN bp_clients c ON c.id=a.client_id LEFT JOIN bp_staff s ON s.id=a.staff_id WHERE a.kind='fila' AND a.date=? AND a.status!='cancelled' ${one ? "AND (a.staff_id=? OR a.staff_id='')" : ''}`, wa = one ? [d, sid] : [d];
     const r = await db.batch([...closeOldStmts(db),
-      db.prepare(`SELECT a.id,a.kind,a.date,a.time,a.duration,a.staff_id,a.service_id,a.service_name,a.price,a.amount,a.status,a.created_at,a.extras,c.id client_id,c.notes,(SELECT COALESCE(SUM(f.amount),0) FROM bp_fees f WHERE f.client_id=c.id AND f.paid=0) debt,c.name cname,c.whatsapp,c.birthday,c.visits,s.name sname ${W} ORDER BY a.time`).bind(...wa),
+      db.prepare(`SELECT a.id,a.kind,a.date,a.time,a.duration,a.staff_id,a.service_id,a.service_name,a.price,a.amount,a.status,a.created_at,a.extras,c.id client_id,c.notes,(SELECT COALESCE(SUM(f.amount),0) FROM bp_fees f WHERE f.client_id=c.id AND f.paid=0) debt,c.name cname,c.whatsapp,c.birthday,c.visits,s.name sname ${W} ORDER BY a.time,a.created_at`).bind(...wa),
       db.prepare(`SELECT ${ITEM_COLS} FROM bp_items i WHERE i.appt_id IN (SELECT a.id ${W}) ORDER BY i.rowid`).bind(...wa),
       db.prepare(`SELECT b.*,s.name sname FROM bp_blocks b LEFT JOIN bp_staff s ON s.id=b.staff_id WHERE b.d2>=? ${one ? 'AND (b.staff_id IS NULL OR b.staff_id=?)' : ''} ORDER BY b.d1,b.t1`).bind(...(one ? [n.date, sid] : [n.date])),
       db.prepare(`SELECT a.id,a.kind,a.date,a.time,a.duration,a.staff_id,a.service_id,a.service_name,a.price,a.amount,a.status,a.created_at,a.extras,c.id client_id,c.notes,(SELECT COALESCE(SUM(f.amount),0) FROM bp_fees f WHERE f.client_id=c.id AND f.paid=0) debt,c.name cname,c.whatsapp,c.birthday,c.visits,s.name sname ${WF} ORDER BY a.created_at`).bind(...wa),
@@ -960,8 +960,8 @@ async function route(req, db, u, p, env, ctx) {
   }
   if (p === '/api/appt/create' && req.method === 'POST') {
     const sf = me.role === 'owner' ? await staffOk(db, B.staff) : { id: me.id, name: me.name }, s0 = await svcOf(db, B.service, false), s = await withExtras(db, s0, B.extras, s0.id, true);
-    if (!isDate(B.date) || !isTime(B.time) || B.date < n.date) throw err(400, 'Elegí una fecha desde hoy y una hora válida');
-    slotRules(await conflicts(db, sf.id, B.date, B.time, s.duration), B.force);
+    // Desde el panel se carga libre: cualquier día y hora, sin chequear choques, bloqueos ni horario de atención (la reserva online sigue con sus reglas).
+    if (!isDate(B.date) || !isTime(B.time)) throw err(400, 'Elegí una fecha y una hora válidas');
     const cid = await client(db, B.name, B.whatsapp, null), id = uid('a'), pr = B.price !== '' && B.price != null && Number.isFinite(+B.price) && +B.price >= 0 ? Math.round(+B.price) : s.price;
     const pl = await planItems(db, B.products, []);
     try { await db.batch([db.prepare("INSERT INTO bp_appts(id,client_id,staff_id,service_id,service_name,price,duration,date,time,kind,extras) VALUES(?,?,?,?,?,?,?,?,?,'turno',?)").bind(id, cid, sf.id, s.id, s.name, pr, s.duration, B.date, B.time, exJson(s)), ...itemStmts(db, id, pl.rows)]); } catch (e) { await giveBack(db, pl.rows); throw e; }
@@ -987,8 +987,7 @@ async function route(req, db, u, p, env, ctx) {
     if (a.kind === 'turno') {
       if (B.date) date = B.date; if (B.time) time = B.time;
       if (me.role === 'owner' && B.staff) sid = (await staffOk(db, B.staff)).id;
-      if (!isDate(date) || !isTime(time) || date < n.date) throw err(400, 'Elegí una fecha desde hoy y una hora válida');
-      if (date !== a.date || time !== a.time || sid !== a.staff_id || sv.duration !== a.duration) slotRules(await conflicts(db, sid, date, time, sv.duration, a.id), B.force);
+      if (!isDate(date) || !isTime(time)) throw err(400, 'Elegí una fecha y una hora válidas');
     }
     const moved = a.kind === 'turno' && (date !== a.date || time !== a.time || sid !== a.staff_id);
     if (moved && a.ext_src === SYNC_SRC) {
