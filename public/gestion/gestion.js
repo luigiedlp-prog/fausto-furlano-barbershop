@@ -258,7 +258,7 @@ const stOpts=sel=>A.team.filter(s=>s.active!==false).map(s=>`<option value="${s.
 function newSheet(){const owner=M.me.role==='owner';
   sheet(`<h2>Cargar un turno</h2>${owner?`<div class="field"><label>Barbero</label><select id="nbar">${stOpts(agStaff!=='all'?agStaff:M.me.id)}</select></div>`:''}
   <div class="field"><label>Servicio</label><select id="ns" onchange="exCalc()">${svOpts()}</select></div>${exBoxes([])}${prodBoxes({})}
-  <div class="field"><label>Día</label><input id="nd" type="date" min="${M.today}" value="${AG?AG.date:M.today}"></div><div class="field"><label>Hora</label><input id="nh" type="time"></div>
+  <div class="field"><label>Día</label><input id="nd" type="date" value="${AG?AG.date:M.today}"></div><div class="field"><label>Hora</label><input id="nh" type="time"></div>
   <div class="field"><label>Nombre del cliente</label><input id="nn" autocomplete="off"></div><div class="field"><label>WhatsApp</label><div class="pair"><input class="prefix" value="+54 9" disabled aria-label="Prefijo"><input id="nw" inputmode="tel" placeholder="2477 201614"></div></div>
   <div class="field"><label>Precio</label><input id="np" type="number" inputmode="numeric" value="${(M.services.find(s=>!s.addon)||{}).price||''}"></div><p class="err" id="ne"></p><button class="btn primary" onclick="saveNew()">Guardar turno</button>`)}
 let saveBusy=false;/* solo dueño: evita que un doble toque cargue el turno dos veces */
@@ -287,7 +287,7 @@ function moveSheet(id){const a=findAppt(id),t=a.kind==='turno',owner=M.me.role==
   sheet(`<h2>${esc(a.cname)}</h2><p class="sub">${t?'Cambiá el día, la hora, el servicio o el precio.':'Cambiá el servicio o el precio.'}</p>
   <div class="field"><label>Servicio</label><select id="ms" onchange="exCalc()">${svOpts(a.service_id)}</select></div>${exBoxes(JSON.parse(a.extras||'[]').map(x=>x.id))}${prodBoxes(Object.fromEntries((a.items||[]).map(i=>[i.product_id,i.qty])))}
   <div class="field"><label>Precio</label><input id="mp" type="number" inputmode="numeric" value="${a.price}"></div>
-  ${t?`${owner?`<div class="field"><label>Barbero</label><select id="mb">${stOpts(a.staff_id||M.me.id)}</select></div>`:''}<div class="field"><label>Día</label><input id="md" type="date" min="${M.today}" value="${a.date||M.today}"></div><div class="field"><label>Hora</label><input id="mh" type="time" value="${esc(a.time)}"></div>`:''}
+  ${t?`${owner?`<div class="field"><label>Barbero</label><select id="mb">${stOpts(a.staff_id||M.me.id)}</select></div>`:''}<div class="field"><label>Día</label><input id="md" type="date" value="${a.date||M.today}"></div><div class="field"><label>Hora</label><input id="mh" type="time" value="${esc(a.time)}"></div>`:''}
   <p class="err" id="me2"></p><button class="btn primary" onclick="saveMove('${id}')">Guardar cambios</button>`)}
 async function saveMove(id,force){const a=findAppt(id),b={id,service:$('ms').value,extras:exSel(),products:pqSel(),price:$('mp').value,force:!!force};if($('md')){b.date=$('md').value;b.time=$('mh').value;if($('mb'))b.staff=$('mb').value}
   try{const r=await post('/appt/move',b);closeSheet();AG=null;AFF=AFF.filter(x=>x.id!==id);await load();draw();
