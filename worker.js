@@ -242,7 +242,7 @@ const prodSum = rows => rows.reduce((t, r) => t + r.qty * r.price, 0);
 const itemsText = rows => rows.map(r => `${r.qty} × ${r.name}`).join(', ');
 const itemStmts = (db, apptId, rows) => rows.map(r => db.prepare('INSERT INTO bp_items(id,appt_id,product_id,name,qty,price,comm_pct,held,cost) VALUES(?,?,?,?,?,?,?,?,?)').bind(uid('i'), apptId, r.product_id, r.name, r.qty, r.price, r.comm_pct, r.held, r.cost || 0));
 // Anti-duplicados: si el mismo pedido llega dos veces seguidas (doble toque, reintento, dos pestañas) devuelve el turno ya cargado en vez de crear otro.
-const dupAppt = (db, wa, where, binds, secs) => db.prepare(`SELECT a.id FROM bp_appts a JOIN bp_clients c ON c.id=a.client_id WHERE c.whatsapp=? AND a.status='pending' AND a.created_at >= datetime('now', ?) AND ${where} LIMIT 1`).bind(String(wa || '').replace(/\D/g, ''), `-${secs} seconds`, ...binds).first();
+const dupAppt = (db, wa, where, binds, secs, sts = "'pending'") => db.prepare(`SELECT a.id,a.status FROM bp_appts a JOIN bp_clients c ON c.id=a.client_id WHERE c.whatsapp=? AND a.status IN (${sts}) ${secs ? "AND a.created_at >= datetime('now', ?)" : ''} AND ${where} LIMIT 1`).bind(String(wa || '').replace(/\D/g, ''), ...(secs ? [`-${secs} seconds`] : []), ...binds).first(); // secs=0 → sin ventana de tiempo (cualquier turno ya cargado cuenta)
 const giveBack = async (db, rows) => { for (const r of rows) if (r.held) await db.prepare('UPDATE bp_products SET stock=stock+? WHERE id=?').bind(r.qty, r.product_id).run(); };
 const lowNotify = (ctx, env, db, low) => { for (const l of low) ctx.waitUntil(notifyStaff(env, db, null, `Quedan ${l.left} de ${l.name}`, 'stock')); };
 // Compara lo pedido contra lo que el turno ya tenía: reserva (o devuelve) solo la diferencia, y se deshace todo si algo falla.
@@ -744,7 +744,7 @@ async function route(req, db, u, p, env, ctx) {
   if (p === '/api/book' && req.method === 'POST') {
     await spamCheck(req, db, B, 'turno'); await dateOk(db, B.date);
     const s = await pubSvc(db, B.service, !!B.guest, B.extras), st = await staffOk(db, B.staff);
-    if (await dupAppt(db, B.whatsapp, "a.kind='turno' AND a.staff_id=? AND a.date=? AND a.time=?", [st.id, B.date, B.time], 300)) return J(200, { ok: true, dup: true, service: s.name, staff: st.name, date: B.date, time: B.time, price: s.price, products: [], total: s.price });
+    if (await dupAppt(db, B.whatsapp, "a.kind='turno' AND a.staff_id=? AND a.date=? AND a.time=?", [st.id, B.date, B.time], 0, "'pending','done'")) return J(200, { ok: true, dup: true, service: s.name, staff: st.name, date: B.date, time: B.time, price: s.price, products: [], total: s.price });
     if (!(await slots(db, B.date, s, st.id, await santiExtra(env, B.date, st.id))).includes(B.time)) throw err(409, 'Ese horario ya no está disponible');
     const cid = await client(db, B.name, B.whatsapp, B.birthday), id = uid('a');
     const pl = await planItems(db, B.products, []);
@@ -756,7 +756,7 @@ async function route(req, db, u, p, env, ctx) {
   if (p === '/api/queue' && req.method === 'POST') {
     await spamCheck(req, db, B, 'fila');
     const s = await pubSvc(db, B.service, !!B.guest, B.extras);
-    if (await dupAppt(db, B.whatsapp, "a.kind='fila' AND a.service_id=? AND a.date=?", [s.id, n.date], 45)) return J(200, { ok: true, dup: true, service: s.name, position: (await queueInfo(db)).position, products: [], total: s.price });
+    if (await dupAppt(db, B.whatsapp, "a.kind='fila' AND a.service_id=? AND a.date=?", [s.id, n.date], 0) || await dupAppt(db, B.whatsapp, "a.kind='fila' AND a.service_id=? AND a.date=?", [s.id, n.date], 900, "'done'")) return J(200, { ok: true, dup: true, service: s.name, position: (await queueInfo(db)).position, products: [], total: s.price });
     const cid = await client(db, B.name, B.whatsapp, B.birthday), info = await queueInfo(db);
     const qid = uid('a'), pl = await planItems(db, B.products, []);
     try { await db.batch([db.prepare("INSERT INTO bp_appts(id,client_id,staff_id,service_id,service_name,price,duration,date,kind,extras) VALUES(?,?,'',?,?,?,?,?,'fila',?)").bind(qid, cid, s.id, s.name, s.price, s.duration, n.date, exJson(s)), ...itemStmts(db, qid, pl.rows)]); } catch (e) { await giveBack(db, pl.rows); throw e; }
@@ -970,7 +970,7 @@ async function route(req, db, u, p, env, ctx) {
     const sf = me.role === 'owner' ? await staffOk(db, B.staff) : { id: me.id, name: me.name }, s0 = await svcOf(db, B.service, false), s = await withExtras(db, s0, B.extras, s0.id, true);
     // Desde el panel se carga libre: cualquier día y hora, sin chequear choques, bloqueos ni horario de atención (la reserva online sigue con sus reglas).
     if (!isDate(B.date) || !isTime(B.time)) throw err(400, 'Elegí una fecha y una hora válidas');
-    const dup = await dupAppt(db, B.whatsapp, "a.kind='turno' AND a.staff_id=? AND a.service_id=? AND a.date=? AND a.time=?", [sf.id, s0.id, B.date, B.time], 300);
+    const dup = await dupAppt(db, B.whatsapp, "a.kind='turno' AND a.staff_id=? AND a.date=? AND a.time=?", [sf.id, B.date, B.time], 0, "'pending','done'");
     if (dup) return J(200, { ok: true, id: dup.id, dup: true });
     const cid = await client(db, B.name, B.whatsapp, null), id = uid('a'), pr = B.price !== '' && B.price != null && Number.isFinite(+B.price) && +B.price >= 0 ? Math.round(+B.price) : s.price;
     const pl = await planItems(db, B.products, []);
@@ -981,7 +981,7 @@ async function route(req, db, u, p, env, ctx) {
   }
   if (p === '/api/queue/add' && req.method === 'POST') { // se anota en la fila general a quien llegó sin turno; el barbero se indica al cerrar el corte
     const s0 = await svcOf(db, B.service, false), s = await withExtras(db, s0, B.extras, s0.id, true);
-    const dup = await dupAppt(db, B.whatsapp, "a.kind='fila' AND a.service_id=? AND a.date=?", [s0.id, n.date], 45);
+    const dup = await dupAppt(db, B.whatsapp, "a.kind='fila' AND a.service_id=? AND a.date=?", [s0.id, n.date], 0) || await dupAppt(db, B.whatsapp, "a.kind='fila' AND a.service_id=? AND a.date=?", [s0.id, n.date], 900, "'done'");
     if (dup) return J(200, { ok: true, id: dup.id, dup: true, position: (await queueInfo(db)).position });
     const cid = await client(db, B.name, B.whatsapp, null), id = uid('a'), pr = B.price !== '' && B.price != null && Number.isFinite(+B.price) && +B.price >= 0 ? Math.round(+B.price) : s.price;
     const pos = (await queueInfo(db)).position, pl = await planItems(db, B.products, []);
@@ -1056,6 +1056,28 @@ async function route(req, db, u, p, env, ctx) {
   }
   if (me.role !== 'owner') throw err(403, 'Solo el dueño puede ver esto');
   if (p === '/api/admin') return J(200, await adminData(db, st, n));
+  if (p === '/api/admin/client/appts') { // historial de turnos de un cliente: día, hora, servicio, quién cortó y estado
+    const cid = String(u.searchParams.get('id') || '');
+    if (!(await db.prepare('SELECT id FROM bp_clients WHERE id=?').bind(cid).first())) throw err(404, 'Cliente no encontrado');
+    const rows = (await db.prepare("SELECT a.id,a.kind,a.date,a.time,a.service_name,a.status,a.amount,a.price,a.prod_total,a.ext_src,a.staff_id,s.name sname FROM bp_appts a LEFT JOIN bp_staff s ON s.id=a.staff_id WHERE a.client_id=? AND a.kind IN('turno','fila') ORDER BY a.date DESC,a.time DESC,a.created_at DESC LIMIT 200").bind(cid).all()).results;
+    return J(200, { items: rows.map(r => ({ id: r.id, kind: r.kind, date: r.date, time: r.time, service: r.service_name, status: r.status, staff: r.sname || '', amount: (r.status === 'done' ? (r.amount || 0) + (r.prod_total || 0) : r.price || 0), locked: r.ext_src === SYNC_SRC })) });
+  }
+  if (p === '/api/appt/del' && req.method === 'POST') { // solo el dueño: borra un turno de la ficha del cliente (p. ej. uno cargado dos veces), en cualquier estado
+    const a = await db.prepare("SELECT a.*,c.name cname FROM bp_appts a JOIN bp_clients c ON c.id=a.client_id WHERE a.id=? AND a.kind IN('turno','fila')").bind(String(B.id || '')).first();
+    if (!a) throw err(404, 'Ese turno no existe (puede que ya lo hayan borrado)');
+    if (a.ext_src === SYNC_SRC) throw err(409, 'Este turno viene de la agenda de Santi: no se puede borrar desde acá.');
+    if (await db.prepare('SELECT id FROM bp_fees WHERE appt_id=?').bind(a.id).first()) throw err(409, 'Tiene una cancelación con cobro asociado, no se puede borrar.');
+    const its = (await db.prepare('SELECT product_id,qty,held FROM bp_items WHERE appt_id=?').bind(a.id).all()).results, done = a.status === 'done';
+    await db.batch([
+      ...its.filter(i => i.held).map(i => db.prepare('UPDATE bp_products SET stock=stock+? WHERE id=?').bind(i.qty, i.product_id)),
+      db.prepare('DELETE FROM bp_items WHERE appt_id=?').bind(a.id),
+      db.prepare('DELETE FROM bp_sync_out WHERE appt_id=?').bind(a.id),
+      db.prepare('DELETE FROM bp_appts WHERE id=?').bind(a.id),
+      ...(done ? [db.prepare("UPDATE bp_clients SET visits=MAX(visits-1,0),total_spent=MAX(total_spent-?,0),last_visit=(SELECT MAX(date) FROM bp_appts WHERE client_id=? AND status='done' AND kind IN('turno','fila')) WHERE id=?").bind((a.amount || 0) + (a.prod_total || 0), a.client_id, a.client_id)] : []),
+      ...(a.status === 'no_show' ? [db.prepare('UPDATE bp_clients SET no_shows=MAX(no_shows-1,0) WHERE id=?').bind(a.client_id)] : [])]);
+    await audit(db, me, 'Borró un turno', `${a.cname} · ${fd(a.date)} ${a.time || ''} · ${a.service_name} · ${a.status}`);
+    return J(200, { ok: true });
+  }
   if (p === '/api/admin/expense' && req.method === 'POST') {
     const c = String(B.concept || '').trim().slice(0, 80), a = Math.round(+B.amount), d = B.date ? String(B.date) : n.date, pay = B.cash ? 'efectivo' : null;
     const cat = ['Alquiler', 'Insumos', 'Servicios', 'Publicidad', 'Sueldos', 'Otros'].includes(B.category) ? B.category : 'Otros';

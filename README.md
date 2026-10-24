@@ -36,8 +36,13 @@ Los servicios, precios, duraciones y horarios (lunes a sábado, de 8 a 21) son l
 
 **Dónde se ve:** en *Mi día → Fila* (todos) y en *Agenda → Fila* (Fausto ve toda la fila del día). **+ Fila** en Agenda carga a alguien que llegó sin turno.
 
+## Turnos de un cliente (ficha)
+Solo el dueño: Contactos → tocar el cliente. Abajo de los datos aparece la lista de **todos sus turnos** con día, hora, servicio, **quién cortó** y estado (pendiente, hecho, no asistió, cancelado). Cada uno tiene **Borrar** (sirve para turnos duplicados): si estaba hecho sale de la caja y de las visitas del cliente, y los productos vuelven al stock. Los turnos repetidos (mismo día, hora y barbero) se marcan con ⚠. No se borran los que vienen de la agenda de Santi ni los que tienen una cancelación con cobro.
+
+**Anti-duplicados:** un mismo cliente no puede tener dos turnos con el mismo barbero, día y hora (pendientes o ya hechos), ni por la reserva online ni cargados desde el panel; si se intenta, no se crea otro y el panel avisa "ya estaba cargado". En la fila, el mismo cliente no puede anotarse dos veces para el mismo servicio en el día (ni de nuevo dentro de los 15 minutos de haberlo hecho).
+
 ## Borrar contactos
-Solo el dueño: Contactos → tocar el cliente → **Editar datos** → **Borrar contacto**. No deja borrar a alguien con un turno pendiente, en la fila o con deuda de cancelación. Sus cortes pasados no se pierden: quedan en la caja como ventas del mostrador. Si esa persona vuelve a reservar, se crea un contacto nuevo.
+Solo el dueño: Contactos → tocar el cliente → **Borrar contacto** (también está dentro de **Editar datos**). No deja borrar a alguien con un turno pendiente, en la fila o con deuda de cancelación. Sus cortes pasados no se pierden: quedan en la caja como ventas del mostrador. Si esa persona vuelve a reservar, se crea un contacto nuevo.
 
 ## Celular y PC
 Todo funciona en celular y en computadora. Desde 1024 px de ancho se usa el diseño de escritorio (`public/desktop.css`, se carga al final en reservas, Mis turnos y Gestión): la reserva queda en dos columnas con el resumen fijo a la derecha, y Gestión pasa a un menú lateral con ventanas centradas. El comprobante de "¡Listo!" queda angosto y centrado, y el aviso de PIN de ejemplo en Gestión tiene su espacio. En celulares y tablets chicas no cambia nada. Para ajustar el ancho o el menú, editá solo ese archivo.
