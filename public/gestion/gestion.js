@@ -113,8 +113,24 @@ function cliSheet(id){
   <div class="hrow" style="margin-top:12px"><span>Última visita</span><b>${esc(c.last_visit||'—')}</b></div><div class="hrow"><span>Cumpleaños</span><b>${dm(c.birthday)}</b></div>
   ${c.debt?`<div class="group pad" style="margin-top:12px"><div class="hrow"><span><b style="color:var(--bad)">Debe ${fmt(c.debt)}</b><small>Cancelación a último momento</small></span><button class="btn" onclick="feePaid('${c.id}')">Registrar cobro</button></div></div>`:''}
   ${c.notes?`<div class="cnote" style="margin-top:12px">${ico('book')} ${esc(c.notes)}</div>`:''}
+  <p class="sub" style="margin:16px 0 8px">Turnos</p><div class="group" id="ct"><div class="empty"><b>Cargando…</b></div></div>
   <button class="btn" style="width:100%;margin-top:12px" onclick="cliEdit('${c.id}')">Editar datos</button>
-  <p class="sub" style="margin:16px 0 8px">Escribirle por WhatsApp</p>${wa(c)}`);
+  <p class="sub" style="margin:16px 0 8px">Escribirle por WhatsApp</p>${wa(c)}
+  <button class="btn danger" style="width:100%;margin-top:16px" onclick="delCli('${c.id}')">Borrar contacto</button>`);
+  cliApps(id);
+}
+const ST_TXT={pending:'Pendiente',done:'Hecho',no_show:'No asistió',cancelled:'Cancelado',unrecorded:'Sin registrar'};
+async function cliApps(cid){
+  try{
+    const r=await api('/admin/client/appts?id='+encodeURIComponent(cid)),el=$('ct');if(!el)return;
+    const cnt={};r.items.forEach(x=>{if(x.kind==='turno'&&(x.status==='pending'||x.status==='done')){const k=x.date+'|'+x.time+'|'+x.staff;cnt[k]=(cnt[k]||0)+1}});
+    el.innerHTML=r.items.length?r.items.map(x=>{const rep=x.kind==='turno'&&cnt[x.date+'|'+x.time+'|'+x.staff]>1;
+      return `<div class="hrow"><span><b>${dm(x.date)}${x.time?' · '+esc(x.time):' · Fila'}</b><small>${esc(x.service)} · ${x.staff?'Cortó '+esc(x.staff):'Sin barbero asignado'} · ${ST_TXT[x.status]||esc(x.status)}${rep?' · <span style="color:var(--bad)">⚠ repetido</span>':''}</small></span>${x.locked?'':`<button class="linkbtn" style="color:var(--bad)" onclick="delAppt('${x.id}','${cid}')">Borrar</button>`}</div>`}).join(''):'<div class="empty"><b>Sin turnos</b></div>';
+  }catch(e){const el=$('ct');if(el)el.innerHTML=`<div class="empty"><b>${esc(e.message)}</b></div>`}
+}
+async function delAppt(id,cid){
+  if(!await confirmD('¿Borrar este turno? Si estaba hecho, sale de la caja y de las visitas del cliente; los productos vuelven al stock. No se puede deshacer.','Borrar',true))return;
+  try{await post('/appt/del',{id});AG=null;await load();draw();cliSheet(cid);toast('Turno borrado')}catch(e){alertD(e.message)}
 }
 
 /* ---- Finanzas y configuración ---- */
@@ -268,7 +284,7 @@ async function saveNew(force){const own=M.me.role==='owner';if(saveBusy)return;
   saveBusy=true;
   try{
     if(own&&force!==true&&b.name.trim()&&b.whatsapp&&b.date&&b.time&&!await confirmD(`¿Cargar este turno?\n\n${b.name.trim()} · ${$('ns').selectedOptions[0].text}\n${dm(b.date)} a las ${b.time} · ${($('nbar').selectedOptions[0]||{}).text||''}`,'Cargar turno'))return;
-    await post('/appt/create',b);closeSheet();AG=null;await load();draw();toast('Turno cargado')}
+    const r=await post('/appt/create',b);closeSheet();AG=null;await load();draw();toast(r.dup?'Ese turno ya estaba cargado: no se duplicó':'Turno cargado')}
   catch(e){saveBusy=false;if(e.data&&e.data.soft){if(await confirmD(e.message+' ¿Cargarlo igual?','Cargar igual'))return saveNew(true)}else $('ne').textContent=e.message}
   finally{saveBusy=false}}
 function filaSheet(){
@@ -281,7 +297,7 @@ async function saveFila(){const own=M.me.role==='owner';if(saveBusy)return;
   saveBusy=true;
   try{
     if(own&&b.name.trim()&&b.whatsapp&&!await confirmD(`¿Anotar en la fila?\n\n${b.name.trim()} · ${$('ns').selectedOptions[0].text}`,'Anotar'))return;
-    const r=await post('/queue/add',b);closeSheet();AG=null;await load();draw();toast('Anotado en la fila · lugar '+r.position)}
+    const r=await post('/queue/add',b);closeSheet();AG=null;await load();draw();toast(r.dup?'Ya estaba en la fila: no se duplicó':'Anotado en la fila · lugar '+r.position)}
   catch(e){$('ne').textContent=e.message}
   finally{saveBusy=false}}
 function moveSheet(id){const a=findAppt(id),t=a.kind==='turno',owner=M.me.role==='owner';
