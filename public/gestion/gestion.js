@@ -26,7 +26,7 @@ function draw(){
   $('bn').textContent=M.me.name+' · Gestión';$('miniLogo').innerHTML=M.logo?`<img src="/api/img/${M.logo}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`:`<img src="/logo.png" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`;$('outBtn').classList.remove('hidden');$('bellBtn').classList.remove('hidden');badge(M.notif);$('tabbar').classList.remove('hidden');
   $('tabs').style.setProperty('--n',ts.length);
   $('tabs').innerHTML=ts.map(t=>`<button class="tab ${tab===t?'active':''}" onclick="go('${t}')">${ico(TABS[t][1])}${TABS[t][0]}</button>`).join('');
-  $('app').innerHTML=(M.weak?weakBanner():'')+({dia:vDia,gan:vGan,eq:vEq,cli:vCli,fin:vFin,cfg:vCfg,ag:vAg,mi:vMi}[tab])();
+  $('app').innerHTML=({dia:vDia,gan:vGan,eq:vEq,cli:vCli,fin:vFin,cfg:vCfg,ag:vAg,mi:vMi}[tab])();
 }
 function sheet(h){$('sheet').innerHTML='<div class="handle"></div>'+h;$('overlay').classList.add('show')}
 function closeSheet(){$('overlay').classList.remove('show')}
@@ -124,9 +124,14 @@ async function cliApps(cid){
   try{
     const r=await api('/admin/client/appts?id='+encodeURIComponent(cid)),el=$('ct');if(!el)return;
     const cnt={};r.items.forEach(x=>{if(x.kind==='turno'&&(x.status==='pending'||x.status==='done')){const k=x.date+'|'+x.time+'|'+x.staff;cnt[k]=(cnt[k]||0)+1}});
-    el.innerHTML=r.items.length?r.items.map(x=>{const rep=x.kind==='turno'&&cnt[x.date+'|'+x.time+'|'+x.staff]>1;
-      return `<div class="hrow"><span><b>${dm(x.date)}${x.time?' · '+esc(x.time):' · Fila'}</b><small>${esc(x.service)} · ${x.staff?'Cortó '+esc(x.staff):'Sin barbero asignado'} · ${ST_TXT[x.status]||esc(x.status)}${rep?' · <span style="color:var(--bad)">⚠ repetido</span>':''}</small></span>${x.locked?'':`<button class="linkbtn" style="color:var(--bad)" onclick="delAppt('${x.id}','${cid}')">Borrar</button>`}</div>`}).join(''):'<div class="empty"><b>Sin turnos</b></div>';
+    const nd=Object.values(cnt).reduce((s,n)=>s+(n>1?n-1:0),0);
+    el.innerHTML=(nd?`<div class="hrow"><span><b style="color:var(--bad)">⚠ ${nd} turno${nd>1?'s':''} repetido${nd>1?'s':''}</b><small>Deja uno solo por barbero, día y hora</small></span><button class="linkbtn" style="color:var(--bad)" onclick="dedupeCli('${cid}')">Borrar duplicados</button></div>`:'')+(r.items.length?r.items.map(x=>{const rep=x.kind==='turno'&&cnt[x.date+'|'+x.time+'|'+x.staff]>1;
+      return `<div class="hrow"><span><b>${dm(x.date)}${x.time?' · '+esc(x.time):' · Fila'}</b><small>${esc(x.service)} · ${x.staff?'Cortó '+esc(x.staff):'Sin barbero asignado'} · ${ST_TXT[x.status]||esc(x.status)}${rep?' · <span style="color:var(--bad)">⚠ repetido</span>':''}</small></span>${x.locked?'':`<button class="linkbtn" style="color:var(--bad)" onclick="delAppt('${x.id}','${cid}')">Borrar</button>`}</div>`}).join(''):'<div class="empty"><b>Sin turnos</b></div>');
   }catch(e){const el=$('ct');if(el)el.innerHTML=`<div class="empty"><b>${esc(e.message)}</b></div>`}
+}
+async function dedupeCli(cid){
+  if(!await confirmD('Se borran los turnos repetidos y queda uno solo por barbero, día y hora (el hecho, o el más antiguo). No se puede deshacer.','Borrar duplicados',true))return;
+  try{const r=await post('/admin/client/dedupe',{id:cid});AG=null;await load();draw();cliSheet(cid);toast(r.removed?r.removed+' duplicado'+(r.removed>1?'s':'')+' borrado'+(r.removed>1?'s':''):'No había duplicados')}catch(e){alertD(e.message)}
 }
 async function delAppt(id,cid){
   if(!await confirmD('¿Borrar este turno? Si estaba hecho, sale de la caja y de las visitas del cliente; los productos vuelven al stock. No se puede deshacer.','Borrar',true))return;
@@ -428,7 +433,6 @@ function hSheet(){const S=A.settings.schedule||{};
 async function saveSched(){try{const sch={};DO.forEach(d=>{if(!$('ho'+d).checked)return;const r=[[$('ha'+d).value,$('hb'+d).value]];if($('hc'+d).value||$('hd'+d).value)r.push([$('hc'+d).value,$('hd'+d).value]);sch[d]=r});
   const x=await post('/admin/schedule',{schedule:sch,book_days:$('hdays').value,step:$('hstep').value});closeSheet();await load();draw();
   if(x.outside)alertD(`Quedaron ${x.outside} turno${x.outside===1?'':'s'} reservado${x.outside===1?'':'s'} fuera del horario nuevo. Revisalos en Mi día.`,'Horarios guardados');else toast('Horarios guardados')}catch(e){$('he').textContent=e.message}}
-function weakBanner(){return `<div class="group pad" style="margin-bottom:12px"><b>Tu PIN es el de ejemplo</b><p class="hint">Cambialo ahora para que nadie más pueda entrar.</p><button class="btn primary" onclick="pinSheet()">Cambiar PIN</button></div>`}
 function vMi(){return `<h1 class="title">Cuenta</h1>${PUSH.card('card')}<div class="group"><button class="lrow" onclick="pinSheet()"><span class="main"><b>Cambiar mi PIN</b><small>4 números</small></span><span class="chev">${ico('chev')}</span></button></div><p class="hint" style="margin-top:10px">Si te olvidás el PIN, pedile al dueño que lo restablezca.</p>`}
 function pinSheet(){sheet(`<h2>Cambiar mi PIN</h2><div class="field"><label>PIN actual</label><input id="pc" type="password" inputmode="numeric" maxlength="4" autocomplete="off"></div><div class="field"><label>PIN nuevo (4 números)</label><input id="pn1" type="password" inputmode="numeric" maxlength="4" autocomplete="off"></div><div class="field"><label>Repetí el PIN nuevo</label><input id="pn2" type="password" inputmode="numeric" maxlength="4" autocomplete="off"></div><p class="err" id="pe"></p><button class="btn primary" onclick="savePin()">Guardar</button>`)}
 async function savePin(){try{if($('pn1').value!==$('pn2').value)throw new Error('Los dos PIN nuevos no coinciden');await post('/pin/change',{current:$('pc').value,pin:$('pn1').value});closeSheet();await load();draw();toast('PIN cambiado')}catch(e){$('pe').textContent=e.message}}
