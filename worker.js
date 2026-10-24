@@ -241,6 +241,8 @@ async function holdBack(db, apptId) { // un turno "No se registró" que en reali
 const prodSum = rows => rows.reduce((t, r) => t + r.qty * r.price, 0);
 const itemsText = rows => rows.map(r => `${r.qty} × ${r.name}`).join(', ');
 const itemStmts = (db, apptId, rows) => rows.map(r => db.prepare('INSERT INTO bp_items(id,appt_id,product_id,name,qty,price,comm_pct,held,cost) VALUES(?,?,?,?,?,?,?,?,?)').bind(uid('i'), apptId, r.product_id, r.name, r.qty, r.price, r.comm_pct, r.held, r.cost || 0));
+// Anti-duplicados: si el mismo pedido llega dos veces seguidas (doble toque, reintento, dos pestañas) devuelve el turno ya cargado en vez de crear otro.
+const dupAppt = (db, wa, where, binds, secs) => db.prepare(`SELECT a.id FROM bp_appts a JOIN bp_clients c ON c.id=a.client_id WHERE c.whatsapp=? AND a.status='pending' AND a.created_at >= datetime('now', ?) AND ${where} LIMIT 1`).bind(String(wa || '').replace(/\D/g, ''), `-${secs} seconds`, ...binds).first();
 const giveBack = async (db, rows) => { for (const r of rows) if (r.held) await db.prepare('UPDATE bp_products SET stock=stock+? WHERE id=?').bind(r.qty, r.product_id).run(); };
 const lowNotify = (ctx, env, db, low) => { for (const l of low) ctx.waitUntil(notifyStaff(env, db, null, `Quedan ${l.left} de ${l.name}`, 'stock')); };
 // Compara lo pedido contra lo que el turno ya tenía: reserva (o devuelve) solo la diferencia, y se deshace todo si algo falla.
@@ -742,6 +744,7 @@ async function route(req, db, u, p, env, ctx) {
   if (p === '/api/book' && req.method === 'POST') {
     await spamCheck(req, db, B, 'turno'); await dateOk(db, B.date);
     const s = await pubSvc(db, B.service, !!B.guest, B.extras), st = await staffOk(db, B.staff);
+    if (await dupAppt(db, B.whatsapp, "a.kind='turno' AND a.staff_id=? AND a.date=? AND a.time=?", [st.id, B.date, B.time], 300)) return J(200, { ok: true, dup: true, service: s.name, staff: st.name, date: B.date, time: B.time, price: s.price, products: [], total: s.price });
     if (!(await slots(db, B.date, s, st.id, await santiExtra(env, B.date, st.id))).includes(B.time)) throw err(409, 'Ese horario ya no está disponible');
     const cid = await client(db, B.name, B.whatsapp, B.birthday), id = uid('a');
     const pl = await planItems(db, B.products, []);
@@ -752,7 +755,9 @@ async function route(req, db, u, p, env, ctx) {
   }
   if (p === '/api/queue' && req.method === 'POST') {
     await spamCheck(req, db, B, 'fila');
-    const s = await pubSvc(db, B.service, !!B.guest, B.extras), cid = await client(db, B.name, B.whatsapp, B.birthday), info = await queueInfo(db);
+    const s = await pubSvc(db, B.service, !!B.guest, B.extras);
+    if (await dupAppt(db, B.whatsapp, "a.kind='fila' AND a.service_id=? AND a.date=?", [s.id, n.date], 45)) return J(200, { ok: true, dup: true, service: s.name, position: (await queueInfo(db)).position, products: [], total: s.price });
+    const cid = await client(db, B.name, B.whatsapp, B.birthday), info = await queueInfo(db);
     const qid = uid('a'), pl = await planItems(db, B.products, []);
     try { await db.batch([db.prepare("INSERT INTO bp_appts(id,client_id,staff_id,service_id,service_name,price,duration,date,kind,extras) VALUES(?,?,'',?,?,?,?,?,'fila',?)").bind(qid, cid, s.id, s.name, s.price, s.duration, n.date, exJson(s)), ...itemStmts(db, qid, pl.rows)]); } catch (e) { await giveBack(db, pl.rows); throw e; }
     ctx.waitUntil(notifyAll(env, db, `Nuevo en la fila: ${String(B.name || '').slice(0, 30)}${pl.rows.length ? ' · Productos: ' + itemsText(pl.rows) : ''}`));
@@ -834,17 +839,20 @@ async function route(req, db, u, p, env, ctx) {
     if (B.serviceId && B.serviceId !== sid) { const s = await svcOf(db, B.serviceId, false); sid = s.id; sn = s.name; pr = s.price; du = s.duration; exs = null; }
     const amt = Number.isFinite(+B.amount) && B.amount !== '' && +B.amount >= 0 ? Math.round(+B.amount) : pr;
     await guardSanti(env, a, 'done', { amount: amt });
-    if (a.status === 'unrecorded') await holdBack(db, a.id);
     const pt = await db.prepare('SELECT COALESCE(SUM(qty*price),0) t,COALESCE(SUM(ROUND(qty*price*comm_pct/100.0)),0) c FROM bp_items WHERE appt_id=?').bind(a.id).first();
-    await db.batch([
-      db.prepare("UPDATE bp_appts SET status='done',staff_id=?,service_id=?,service_name=?,price=?,duration=?,pay=?,amount=?,extras=?,prod_total=?,prod_comm=? WHERE id=?").bind(who, sid, sn, pr, du, B.pay === 'transferencia' ? 'transferencia' : 'efectivo', amt, exs, pt.t, Math.round(pt.c), a.id),
-      db.prepare('UPDATE bp_clients SET visits=visits+1,total_spent=total_spent+?,last_visit=? WHERE id=?').bind(amt + pt.t, a.date, a.client_id)]);
+    // Solo cierra si el turno sigue pendiente: si llegan dos pedidos juntos, el segundo no cuenta (ni suma visitas ni plata de más).
+    const up = await db.prepare("UPDATE bp_appts SET status='done',staff_id=?,service_id=?,service_name=?,price=?,duration=?,pay=?,amount=?,extras=?,prod_total=?,prod_comm=? WHERE id=? AND status IN ('pending','unrecorded')").bind(who, sid, sn, pr, du, B.pay === 'transferencia' ? 'transferencia' : 'efectivo', amt, exs, pt.t, Math.round(pt.c), a.id).run();
+    if (!up.meta.changes) throw err(409, 'Ese turno ya fue cerrado');
+    if (a.status === 'unrecorded') await holdBack(db, a.id);
+    await db.prepare('UPDATE bp_clients SET visits=visits+1,total_spent=total_spent+?,last_visit=? WHERE id=?').bind(amt + pt.t, a.date, a.client_id).run();
     return J(200, { ok: true });
   }
   if (p === '/api/appt/status' && req.method === 'POST') {
     const a = await mine(db, me, B.id), s = B.status === 'no_show' ? 'no_show' : 'cancelled';
     await guardSanti(env, a, s === 'no_show' ? 'no_show' : 'cancel');
-    await db.batch([db.prepare('UPDATE bp_appts SET status=? WHERE id=?').bind(s, a.id), ...(s === 'no_show' ? [db.prepare('UPDATE bp_clients SET no_shows=no_shows+1 WHERE id=?').bind(a.client_id)] : [])]);
+    const up = await db.prepare("UPDATE bp_appts SET status=? WHERE id=? AND status IN ('pending','unrecorded')").bind(s, a.id).run();
+    if (!up.meta.changes) throw err(409, 'Ese turno ya fue cerrado');
+    if (s === 'no_show') await db.prepare('UPDATE bp_clients SET no_shows=no_shows+1 WHERE id=?').bind(a.client_id).run();
     if (s === 'cancelled' || s === 'no_show') await releaseDead(db);
     if (s === 'cancelled' && a.kind === 'turno') ctx.waitUntil((async () => notifyClient(env, db, (await db.prepare('SELECT whatsapp FROM bp_clients WHERE id=?').bind(a.client_id).first())?.whatsapp, 'Turno cancelado', `Se canceló tu turno del ${fd(a.date)} a las ${a.time}. Escribinos para reprogramarlo.`))());
     return J(200, { ok: true });
@@ -962,6 +970,8 @@ async function route(req, db, u, p, env, ctx) {
     const sf = me.role === 'owner' ? await staffOk(db, B.staff) : { id: me.id, name: me.name }, s0 = await svcOf(db, B.service, false), s = await withExtras(db, s0, B.extras, s0.id, true);
     // Desde el panel se carga libre: cualquier día y hora, sin chequear choques, bloqueos ni horario de atención (la reserva online sigue con sus reglas).
     if (!isDate(B.date) || !isTime(B.time)) throw err(400, 'Elegí una fecha y una hora válidas');
+    const dup = await dupAppt(db, B.whatsapp, "a.kind='turno' AND a.staff_id=? AND a.service_id=? AND a.date=? AND a.time=?", [sf.id, s0.id, B.date, B.time], 300);
+    if (dup) return J(200, { ok: true, id: dup.id, dup: true });
     const cid = await client(db, B.name, B.whatsapp, null), id = uid('a'), pr = B.price !== '' && B.price != null && Number.isFinite(+B.price) && +B.price >= 0 ? Math.round(+B.price) : s.price;
     const pl = await planItems(db, B.products, []);
     try { await db.batch([db.prepare("INSERT INTO bp_appts(id,client_id,staff_id,service_id,service_name,price,duration,date,time,kind,extras) VALUES(?,?,?,?,?,?,?,?,?,'turno',?)").bind(id, cid, sf.id, s.id, s.name, pr, s.duration, B.date, B.time, exJson(s)), ...itemStmts(db, id, pl.rows)]); } catch (e) { await giveBack(db, pl.rows); throw e; }
@@ -971,6 +981,8 @@ async function route(req, db, u, p, env, ctx) {
   }
   if (p === '/api/queue/add' && req.method === 'POST') { // se anota en la fila general a quien llegó sin turno; el barbero se indica al cerrar el corte
     const s0 = await svcOf(db, B.service, false), s = await withExtras(db, s0, B.extras, s0.id, true);
+    const dup = await dupAppt(db, B.whatsapp, "a.kind='fila' AND a.service_id=? AND a.date=?", [s0.id, n.date], 45);
+    if (dup) return J(200, { ok: true, id: dup.id, dup: true, position: (await queueInfo(db)).position });
     const cid = await client(db, B.name, B.whatsapp, null), id = uid('a'), pr = B.price !== '' && B.price != null && Number.isFinite(+B.price) && +B.price >= 0 ? Math.round(+B.price) : s.price;
     const pos = (await queueInfo(db)).position, pl = await planItems(db, B.products, []);
     try { await db.batch([db.prepare("INSERT INTO bp_appts(id,client_id,staff_id,service_id,service_name,price,duration,date,kind,extras) VALUES(?,?,'',?,?,?,?,?,'fila',?)").bind(id, cid, s.id, s.name, pr, s.duration, n.date, exJson(s)), ...itemStmts(db, id, pl.rows)]); } catch (e) { await giveBack(db, pl.rows); throw e; }
