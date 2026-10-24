@@ -69,7 +69,8 @@ function doneSheet(id){
   document.querySelectorAll('#dp button').forEach(b=>b.onclick=()=>document.querySelectorAll('#dp button').forEach(x=>x.classList.toggle('on',x===b)));
 }
 function dtot(p){const e=$('dt');if(e)e.textContent=fmt((+$('da').value||0)+p)}
-async function doDone(id){if($('dbar')&&!$('dbar').value){$('de').textContent='Elegí de quién fue el corte';return}try{await post('/appt/done',{id,staff:($('dbar')||{}).value||undefined,serviceId:$('ds').value,amount:$('da').value,pay:document.querySelector('#dp .on').dataset.v});closeSheet();AG=null;await load();draw();toast('Servicio registrado')}catch(e){$('de').textContent=e.message}}
+let doneBusy=false;
+async function doDone(id){if(doneBusy)return;if($('dbar')&&!$('dbar').value){$('de').textContent='Elegí de quién fue el corte';return}doneBusy=true;const bt=document.querySelector('#sheet .btn.primary');if(bt)bt.disabled=true;try{await post('/appt/done',{id,staff:($('dbar')||{}).value||undefined,serviceId:$('ds').value,amount:$('da').value,pay:document.querySelector('#dp .on').dataset.v});closeSheet();AG=null;await load();draw();toast('Servicio registrado')}catch(e){$('de').textContent=e.message;if(bt)bt.disabled=false}finally{doneBusy=false}}
 async function setSt(id,status){
   if(!await confirmD(status==='no_show'?'¿Marcar este turno como "No asistió"?':'¿Cancelar este turno?',status==='no_show'?'Marcar':'Cancelar turno',true))return;
   const a=findAppt(id);
@@ -126,7 +127,7 @@ function vFin(){
   ${sec('Últimos 14 días','',`<div class="group pad">${chart14()}</div>`)}
   ${m.byPay&&(m.byPay.efectivo||m.byPay.transferencia)?sec('Por medio de pago',lab,`<div class="group pad">${[['efectivo','Efectivo'],['transferencia','Transferencia']].map(([k,l])=>{const tot=m.byPay.efectivo+m.byPay.transferencia;return `<div class="hrow"><span>${l}<small>${tot?Math.round(m.byPay[k]*100/tot):0}%</small></span><b>${fmt(m.byPay[k])}</b></div>`}).join('')}</div>`):''}
   ${m.sales&&m.sales.length?sec('Productos vendidos',lab,`<div class="group pad">${m.sales.map(s=>`<div class="hrow"><span>${esc(s.name)}<small>${s.u} unidad${s.u===1?'':'es'}</small></span><b>${fmt(s.t)}</b></div>`).join('')}${m.cogs?`<div class="hrow"><span>Costo de lo vendido</span><b>− ${fmt(m.cogs)}</b></div><div class="hrow"><span><b>Margen de productos</b><small>No cambia la ganancia neta: la compra de stock ya se carga como gasto</small></span><b>${fmt(m.sales.reduce((t,s)=>t+s.t,0)-m.cogs)}</b></div>`:''}</div>`):''}
-  ${sec('Cierre de caja','Efectivo de hoy',(()=>{const C=A.caja,cl=C.closed,old=C.history.filter(h=>h.date!==M.today).slice(0,5);return `<div class="group pad"><div class="hrow"><span>Cobrado en efectivo hoy</span><b>${fmt(C.in)}</b></div>${C.out?`<div class="hrow"><span>Gastos pagados con la caja</span><b>− ${fmt(C.out)}</b></div>`:''}<div class="hrow"><span><b>Debería haber en la caja</b></span><b>${fmt(C.expected)}</b></div><div class="field"><label>Contado en caja</label><input id="cc" type="number" inputmode="numeric" value="${cl?cl.counted:''}" oninput="cajaDiff()"></div><p class="hint" id="cd">${cl?cajaTxt(cl.counted-C.expected):''}</p><button class="btn primary" id="cb" onclick="saveCaja()">${cl?'Actualizar cierre':'Guardar cierre'}</button>${cl?`<p class="hint">Guardado a las ${hh(cl.at)}</p>`:''}${old.length?`<div style="margin-top:12px">${old.map(h=>`<div class="hrow"><span>${dm(h.date)}<small>Contado ${fmt(h.counted)}</small></span><b style="color:${h.diff<0?'var(--bad)':'inherit'}">${cajaTxt(h.diff)}</b></div>`).join('')}</div>`:''}</div>`})())}
+  ${sec('Cierre de caja','Efectivo de hoy',(()=>{const C=A.caja,cl=C.closed,old=C.history.filter(h=>h.date!==M.today).slice(0,5);return `<div class="group pad"><div class="hrow"><span>Cobrado en efectivo hoy</span><b>${fmt(C.in)}</b></div>${C.out?`<div class="hrow"><span>Gastos pagados con la caja</span><b>− ${fmt(C.out)}</b></div>`:''}<div class="hrow"><span><b>Debería haber en la caja</b></span><b>${fmt(C.expected)}</b></div><div class="field"><label>Contado en caja</label><input id="cc" type="number" inputmode="numeric" value="${cl?cl.counted:''}" oninput="cajaDiff()" onkeydown="if(event.key==='Enter'){event.preventDefault();saveCaja()}" onwheel="this.blur()"></div><p class="hint" id="cd">${cl?cajaTxt(cl.counted-C.expected):''}</p><button class="btn primary" id="cb" onclick="saveCaja()">${cl?'Actualizar cierre':'Guardar cierre'}</button>${cl?`<p class="hint">Guardado a las ${hh(cl.at)}</p>`:''}${old.length?`<div style="margin-top:12px">${old.map(h=>`<div class="hrow"><span>${dm(h.date)}<small>Contado ${fmt(h.counted)}</small></span><b style="color:${h.diff<0?'var(--bad)':'inherit'}">${cajaTxt(h.diff)}</b></div>`).join('')}</div>`:''}</div>`})())}
   ${sec('Cargar un gasto','',`<div class="group pad"><div class="field" style="margin-top:0"><label>Concepto</label><input id="gc" placeholder="Ej.: insumos, luz"></div><div class="field"><label>Categoría</label><select id="gk" onchange="sueldoHint('gk','gh')">${EXPCATS.map(c=>`<option>${c}</option>`).join('')}</select><p class="hint" id="gh"></p></div><div class="field"><label>Monto</label><input id="gm" type="number" inputmode="numeric"></div><div class="field"><label>Fecha</label><input id="gd" type="date" value="${M.today}" max="${M.today}"></div><label class="hhead" style="margin:10px 0"><input type="checkbox" id="gcash"><b>Se pagó con efectivo de la caja</b></label><p class="err" id="ge"></p><button class="btn primary" id="gb" onclick="addExp()">Guardar gasto</button></div>`)}
   ${Object.keys(m.byCat||{}).length?sec('Gastos por categoría',lab,`<div class="group pad">${Object.entries(m.byCat).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`<div class="hrow"><span>${esc(k)}<small>${m.expenses?Math.round(v*100/m.expenses):0}%</small></span><b>${fmt(v)}</b></div>`).join('')}</div>`):''}
   ${rows.length?sec('Gastos · '+lab.toLowerCase(),'Tocá uno para editar o borrar',`<div class="group pad">${rows.map(e=>`<div class="hrow" style="cursor:pointer" onclick="expSheet('${e.id}')"><span>${esc(e.concept)}<small>${esc(e.category||'Otros')} · ${esc(e.date)}${e.pay==='efectivo'?' · de la caja':''}</small></span><b>${fmt(e.amount)}</b></div>`).join('')}</div>`):''}
@@ -261,10 +262,10 @@ function newSheet(){const owner=M.me.role==='owner';
   <div class="field"><label>Día</label><input id="nd" type="date" value="${AG?AG.date:M.today}"></div><div class="field"><label>Hora</label><input id="nh" type="time"></div>
   <div class="field"><label>Nombre del cliente</label><input id="nn" autocomplete="off"></div><div class="field"><label>WhatsApp</label><div class="pair"><input class="prefix" value="+54 9" disabled aria-label="Prefijo"><input id="nw" inputmode="tel" placeholder="2477 201614"></div></div>
   <div class="field"><label>Precio</label><input id="np" type="number" inputmode="numeric" value="${(M.services.find(s=>!s.addon)||{}).price||''}"></div><p class="err" id="ne"></p><button class="btn primary" onclick="saveNew()">Guardar turno</button>`)}
-let saveBusy=false;/* solo dueño: evita que un doble toque cargue el turno dos veces */
-async function saveNew(force){const own=M.me.role==='owner';if(own&&saveBusy)return;
+let saveBusy=false;/* evita que un doble toque (o doble clic) cargue el turno dos veces */
+async function saveNew(force){const own=M.me.role==='owner';if(saveBusy)return;
   const b={staff:($('nbar')||{}).value,service:$('ns').value,extras:exSel(),products:pqSel(),date:$('nd').value,time:$('nh').value,name:$('nn').value,whatsapp:formatWA($('nw').value),price:$('np').value,force:!!force};
-  saveBusy=own;
+  saveBusy=true;
   try{
     if(own&&force!==true&&b.name.trim()&&b.whatsapp&&b.date&&b.time&&!await confirmD(`¿Cargar este turno?\n\n${b.name.trim()} · ${$('ns').selectedOptions[0].text}\n${dm(b.date)} a las ${b.time} · ${($('nbar').selectedOptions[0]||{}).text||''}`,'Cargar turno'))return;
     await post('/appt/create',b);closeSheet();AG=null;await load();draw();toast('Turno cargado')}
@@ -275,9 +276,9 @@ function filaSheet(){
   <div class="field"><label>Servicio</label><select id="ns" onchange="exCalc()">${svOpts()}</select></div>${exBoxes([])}${prodBoxes({})}
   <div class="field"><label>Nombre del cliente</label><input id="nn" autocomplete="off"></div><div class="field"><label>WhatsApp</label><div class="pair"><input class="prefix" value="+54 9" disabled aria-label="Prefijo"><input id="nw" inputmode="tel" placeholder="2477 201614"></div></div>
   <div class="field"><label>Precio</label><input id="np" type="number" inputmode="numeric" value="${(M.services.find(s=>!s.addon)||{}).price||''}"></div><p class="err" id="ne"></p><button class="btn primary" onclick="saveFila()">Anotar en la fila</button>`)}
-async function saveFila(){const own=M.me.role==='owner';if(own&&saveBusy)return;
+async function saveFila(){const own=M.me.role==='owner';if(saveBusy)return;
   const b={service:$('ns').value,extras:exSel(),products:pqSel(),name:$('nn').value,whatsapp:formatWA($('nw').value),price:$('np').value};
-  saveBusy=own;
+  saveBusy=true;
   try{
     if(own&&b.name.trim()&&b.whatsapp&&!await confirmD(`¿Anotar en la fila?\n\n${b.name.trim()} · ${$('ns').selectedOptions[0].text}`,'Anotar'))return;
     const r=await post('/queue/add',b);closeSheet();AG=null;await load();draw();toast('Anotado en la fila · lugar '+r.position)}
@@ -397,7 +398,7 @@ async function sumImage(){try{
   sheet(`<h2>Resumen del día</h2><img src="${URL.createObjectURL(blob)}" alt="Resumen del día" style="width:100%;border-radius:14px"><div class="row2"><button class="btn primary" onclick="sumShare()">Compartir</button><button class="btn" onclick="sumDl()">Descargar</button></div><p class="hint">En el celular también podés mantener apretada la imagen para guardarla.</p>`)
  }catch(e){alertD(e.message||'No se pudo generar la imagen')}}
 function sumDl(){const a=document.createElement('a');a.href=URL.createObjectURL(SUMB.blob);a.download=SUMB.name;document.body.appendChild(a);a.click();a.remove()}
-async function sumShare(){const f=new File([SUMB.blob],SUMB.name,{type:'image/png'});if(navigator.canShare&&navigator.canShare({files:[f]})){try{await navigator.share({files:[f],title:'Resumen del día'})}catch(e){}}else sumDl()}
+async function sumShare(){if(!matchMedia('(pointer:coarse)').matches)return sumDl();const f=new File([SUMB.blob],SUMB.name,{type:'image/png'});if(navigator.canShare&&navigator.canShare({files:[f]})){try{await navigator.share({files:[f],title:'Resumen del día'})}catch(e){}}else sumDl()}
 
 /* ---- Horarios, PIN y seguridad ---- */
 const DN=['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'],DS=['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'],DO=[1,2,3,4,5,6,0];
