@@ -9,7 +9,10 @@ W.api=async function(url,opt){
   if(!r.ok)throw Object.assign(new Error(j.error||'Error'),{data:j,status:r.status});
   return j;
 };
-W.post=(url,body)=>api(url,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body||{})});
+/* Un mismo pedido idéntico que todavía está en camino no se manda dos veces (doble toque / doble clic) */
+const inflight=new Map();
+W.post=(url,body)=>{const k=url+'|'+JSON.stringify(body||{});if(inflight.has(k))return inflight.get(k);
+  const p=api(url,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body||{})}).finally(()=>inflight.delete(k));inflight.set(k,p);return p};
 
 /* conos (trazo, estilo SF Symbols) */
 const IC={
