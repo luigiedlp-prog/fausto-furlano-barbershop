@@ -62,6 +62,8 @@ async function init(db) {
   await db.prepare('ALTER TABLE bp_appts ADD COLUMN ext_id TEXT').run().catch(() => {});
   await db.prepare('ALTER TABLE bp_appts ADD COLUMN ext_rev INTEGER').run().catch(() => {});
   await db.prepare('CREATE UNIQUE INDEX IF NOT EXISTS bp_appts_ext ON bp_appts(ext_src,ext_id) WHERE ext_src IS NOT NULL').run().catch(() => {});
+  // Un mismo cliente no puede tener dos turnos con el mismo barbero, día y hora (pendientes o hechos): cierra los duplicados por pedidos simultáneos. Si hubiera duplicados viejos, no se crea hasta borrarlos.
+  await db.prepare("CREATE UNIQUE INDEX IF NOT EXISTS bp_appts_uq ON bp_appts(client_id,staff_id,date,time) WHERE kind='turno' AND status IN ('pending','done') AND ext_src IS NULL").run().catch(() => {});
   // Cola de salida hacia el sistema de Santi: todo turno nuevo (o reasignado a alguien) del local; al enviar solo pasan los de Santi.
   await db.prepare("CREATE TABLE IF NOT EXISTS bp_sync_out (appt_id TEXT PRIMARY KEY,estado TEXT NOT NULL DEFAULT 'pendiente',intentos INTEGER NOT NULL DEFAULT 0,proximo INTEGER NOT NULL DEFAULT 0,ultimo_error TEXT,t INTEGER NOT NULL DEFAULT 0)").run();
   await db.prepare("CREATE TRIGGER IF NOT EXISTS bp_sync_ai AFTER INSERT ON bp_appts WHEN NEW.kind='turno' AND NEW.ext_src IS NULL AND NEW.staff_id<>'' BEGIN INSERT INTO bp_sync_out(appt_id,t) VALUES(NEW.id,CAST((julianday('now')-2440587.5)*86400000 AS INTEGER)) ON CONFLICT(appt_id) DO UPDATE SET estado='pendiente',intentos=0,proximo=0,ultimo_error=NULL,t=excluded.t; END").run().catch(() => {});
@@ -152,6 +154,17 @@ const ipOf = req => req.headers.get('cf-connecting-ip') || 'x';
 const norm = s => String(s || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ');
 const WEAK = ['0000', '1111', '2222', '3333', '4444', '5555', '6666', '7777', '8888', '9999', '1234', '4321', '1212'];
 const pinRule = p => { if (!/^\d{4}$/.test(p)) throw err(400, 'El PIN tiene que ser de 4 números'); };
+const delApptRow = async (db, me, a) => { // borra un turno de cualquier estado y deja todo en orden (stock, caja del cliente, contadores)
+    const its = (await db.prepare('SELECT product_id,qty,held FROM bp_items WHERE appt_id=?').bind(a.id).all()).results, done = a.status === 'done';
+    await db.batch([
+      ...its.filter(i => i.held).map(i => db.prepare('UPDATE bp_products SET stock=stock+? WHERE id=?').bind(i.qty, i.product_id)),
+      db.prepare('DELETE FROM bp_items WHERE appt_id=?').bind(a.id),
+      db.prepare('DELETE FROM bp_sync_out WHERE appt_id=?').bind(a.id),
+      db.prepare('DELETE FROM bp_appts WHERE id=?').bind(a.id),
+      ...(done ? [db.prepare("UPDATE bp_clients SET visits=MAX(visits-1,0),total_spent=MAX(total_spent-?,0),last_visit=(SELECT MAX(date) FROM bp_appts WHERE client_id=? AND status='done' AND kind IN('turno','fila')) WHERE id=?").bind((a.amount || 0) + (a.prod_total || 0), a.client_id, a.client_id)] : []),
+      ...(a.status === 'no_show' ? [db.prepare('UPDATE bp_clients SET no_shows=MAX(no_shows-1,0) WHERE id=?').bind(a.client_id)] : [])]);
+    await audit(db, me, 'Borró un turno', `${a.cname} · ${fd(a.date)} ${a.time || ''} · ${a.service_name} · ${a.status}`);
+};
 const weakPin = async (db, id) => { const s = await db.prepare('SELECT pin_hash FROM bp_staff WHERE id=?').bind(id).first(); for (const p of ['1234', '1111', '2222', '3333', '4444']) if (s && s.pin_hash === await hash(p)) return true; return false; };
 // Límite de intentos: lockCheck corta si ya se llegó al máximo dentro de la ventana; lockHit suma un intento; lockClear lo borra.
 const LIMITS = false; // false = límite de intentos DESACTIVADO (PIN, recuperación, cambio de PIN y anti-spam de reservas). Poné true para reactivarlo.
@@ -908,14 +921,7 @@ async function route(req, db, u, p, env, ctx) {
     const a = await db.prepare("SELECT a.*,c.name cname FROM bp_appts a JOIN bp_clients c ON c.id=a.client_id WHERE a.id=? AND a.status='done' AND a.kind IN('turno','fila')").bind(String(B.id || '')).first();
     if (!a) throw err(404, 'Turno hecho no encontrado (puede que ya lo hayan eliminado)');
     if (a.ext_src === SYNC_SRC) throw err(409, 'Este turno viene de la agenda de Santi: no se puede eliminar desde acá.');
-    const its = (await db.prepare('SELECT product_id,qty,held FROM bp_items WHERE appt_id=?').bind(a.id).all()).results;
-    await db.batch([
-      ...its.filter(i => i.held).map(i => db.prepare('UPDATE bp_products SET stock=stock+? WHERE id=?').bind(i.qty, i.product_id)),
-      db.prepare('DELETE FROM bp_items WHERE appt_id=?').bind(a.id),
-      db.prepare('DELETE FROM bp_sync_out WHERE appt_id=?').bind(a.id),
-      db.prepare('DELETE FROM bp_appts WHERE id=?').bind(a.id),
-      db.prepare("UPDATE bp_clients SET visits=MAX(visits-1,0),total_spent=MAX(total_spent-?,0),last_visit=(SELECT MAX(date) FROM bp_appts WHERE client_id=? AND status='done' AND kind IN('turno','fila')) WHERE id=?").bind((a.amount || 0) + (a.prod_total || 0), a.client_id, a.client_id)]);
-    await audit(db, me, 'Eliminó un turno hecho', `${a.cname} · ${fd(a.date)} ${a.time || ''} · ${a.service_name} · ${money((a.amount || 0) + (a.prod_total || 0))}`);
+    await delApptRow(db, me, a);
     return J(200, { ok: true });
   }
 
@@ -1062,20 +1068,20 @@ async function route(req, db, u, p, env, ctx) {
     const rows = (await db.prepare("SELECT a.id,a.kind,a.date,a.time,a.service_name,a.status,a.amount,a.price,a.prod_total,a.ext_src,a.staff_id,s.name sname FROM bp_appts a LEFT JOIN bp_staff s ON s.id=a.staff_id WHERE a.client_id=? AND a.kind IN('turno','fila') ORDER BY a.date DESC,a.time DESC,a.created_at DESC LIMIT 200").bind(cid).all()).results;
     return J(200, { items: rows.map(r => ({ id: r.id, kind: r.kind, date: r.date, time: r.time, service: r.service_name, status: r.status, staff: r.sname || '', amount: (r.status === 'done' ? (r.amount || 0) + (r.prod_total || 0) : r.price || 0), locked: r.ext_src === SYNC_SRC })) });
   }
+  if (p === '/api/admin/client/dedupe' && req.method === 'POST') { // deja un solo turno por (barbero, día, hora): conserva el hecho, o el más antiguo
+    const rows = (await db.prepare("SELECT a.*,c.name cname FROM bp_appts a JOIN bp_clients c ON c.id=a.client_id WHERE a.client_id=? AND a.kind='turno' AND a.status IN('pending','done') AND a.ext_src IS NULL ORDER BY (a.status='done') DESC,a.created_at ASC,a.id ASC").bind(String(B.id || '')).all()).results, seen = new Set();
+    let removed = 0;
+    for (const a of rows) { const k = a.staff_id + '|' + a.date + '|' + a.time; if (!seen.has(k)) { seen.add(k); continue; }
+      if (await db.prepare('SELECT id FROM bp_fees WHERE appt_id=?').bind(a.id).first()) continue;
+      await delApptRow(db, me, a); removed++; }
+    return J(200, { ok: true, removed });
+  }
   if (p === '/api/appt/del' && req.method === 'POST') { // solo el dueño: borra un turno de la ficha del cliente (p. ej. uno cargado dos veces), en cualquier estado
     const a = await db.prepare("SELECT a.*,c.name cname FROM bp_appts a JOIN bp_clients c ON c.id=a.client_id WHERE a.id=? AND a.kind IN('turno','fila')").bind(String(B.id || '')).first();
     if (!a) throw err(404, 'Ese turno no existe (puede que ya lo hayan borrado)');
     if (a.ext_src === SYNC_SRC) throw err(409, 'Este turno viene de la agenda de Santi: no se puede borrar desde acá.');
     if (await db.prepare('SELECT id FROM bp_fees WHERE appt_id=?').bind(a.id).first()) throw err(409, 'Tiene una cancelación con cobro asociado, no se puede borrar.');
-    const its = (await db.prepare('SELECT product_id,qty,held FROM bp_items WHERE appt_id=?').bind(a.id).all()).results, done = a.status === 'done';
-    await db.batch([
-      ...its.filter(i => i.held).map(i => db.prepare('UPDATE bp_products SET stock=stock+? WHERE id=?').bind(i.qty, i.product_id)),
-      db.prepare('DELETE FROM bp_items WHERE appt_id=?').bind(a.id),
-      db.prepare('DELETE FROM bp_sync_out WHERE appt_id=?').bind(a.id),
-      db.prepare('DELETE FROM bp_appts WHERE id=?').bind(a.id),
-      ...(done ? [db.prepare("UPDATE bp_clients SET visits=MAX(visits-1,0),total_spent=MAX(total_spent-?,0),last_visit=(SELECT MAX(date) FROM bp_appts WHERE client_id=? AND status='done' AND kind IN('turno','fila')) WHERE id=?").bind((a.amount || 0) + (a.prod_total || 0), a.client_id, a.client_id)] : []),
-      ...(a.status === 'no_show' ? [db.prepare('UPDATE bp_clients SET no_shows=MAX(no_shows-1,0) WHERE id=?').bind(a.client_id)] : [])]);
-    await audit(db, me, 'Borró un turno', `${a.cname} · ${fd(a.date)} ${a.time || ''} · ${a.service_name} · ${a.status}`);
+    await delApptRow(db, me, a);
     return J(200, { ok: true });
   }
   if (p === '/api/admin/expense' && req.method === 'POST') {
@@ -1363,7 +1369,7 @@ export default {
     if (/^\/api\/img\/static-[a-z]+$/.test(p)) return new Response(null, { status: 302, headers: { location: u.origin + '/img/' + p.slice(16) + '.webp', 'cache-control': 'public, max-age=86400' } });
     if (!env.DB) return J(500, { error: 'Falta el binding D1 llamado DB.' });
     try { await init(env.DB); const res = await route(req, env.DB, u, p, env, ctx); if (req.method === 'POST' && p !== '/api/sync/turno' && syncOn(env) && env.SYNC_URL) ctx.waitUntil(syncFlushOut(env, env.DB).catch(e => console.error('SYNC_OUT_ERROR', String(e?.message || e)))); return res; }
-    catch (e) { return J(e.status || 400, { error: e.message, ...(e.soft ? { soft: true } : {}), ...(e.late ? { late: true, fee: e.fee } : {}) }); }
+    catch (e) { if (/UNIQUE constraint failed/i.test(String(e && e.message))) return J(409, { error: 'Ese cliente ya tiene un turno con ese barbero a esa misma hora.' }); return J(e.status || 400, { error: e.message, ...(e.soft ? { soft: true } : {}), ...(e.late ? { late: true, fee: e.fee } : {}) }); }
   },
   // Cron (wrangler.toml): recuerda por push los turnos de la próxima hora (al cliente, a su barbero y a los dueños) y reintenta los avisos pendientes.
   async scheduled(event, env, ctx) {

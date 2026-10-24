@@ -41,6 +41,10 @@ Solo el dueño: Contactos → tocar el cliente. Abajo de los datos aparece la li
 
 **Anti-duplicados:** un mismo cliente no puede tener dos turnos con el mismo barbero, día y hora (pendientes o ya hechos), ni por la reserva online ni cargados desde el panel; si se intenta, no se crea otro y el panel avisa "ya estaba cargado". En la fila, el mismo cliente no puede anotarse dos veces para el mismo servicio en el día (ni de nuevo dentro de los 15 minutos de haberlo hecho).
 
+**Borrar duplicados:** si un cliente tiene turnos repetidos, arriba de su lista aparece **Borrar duplicados**: deja uno solo por barbero, día y hora (el hecho, o el más antiguo). Además, la base tiene un índice único (`bp_appts_uq`) que impide guardar dos turnos iguales aunque lleguen al mismo tiempo; se crea solo al primer pedido.
+
+**PIN:** ya no aparece el aviso de "Tu PIN es el de ejemplo"; el PIN por defecto se puede seguir usando.
+
 ## Borrar contactos
 Solo el dueño: Contactos → tocar el cliente → **Borrar contacto** (también está dentro de **Editar datos**). No deja borrar a alguien con un turno pendiente, en la fila o con deuda de cancelación. Sus cortes pasados no se pierden: quedan en la caja como ventas del mostrador. Si esa persona vuelve a reservar, se crea un contacto nuevo.
 
