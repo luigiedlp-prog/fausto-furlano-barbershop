@@ -45,6 +45,8 @@ Solo el dueño: Contactos → tocar el cliente. Abajo de los datos aparece la li
 
 **PIN:** ya no aparece el aviso de "Tu PIN es el de ejemplo"; el PIN por defecto se puede seguir usando.
 
+**Sin bloqueos al cargar:** desde el panel se puede cargar cualquier cantidad de turnos al mismo horario (sobreturnos), y lo que llega desde el sistema de Santi tampoco se rechaza por horario lleno. La reserva online sigue mostrando solo los horarios libres.
+
 ## Borrar contactos
 Solo el dueño: Contactos → tocar el cliente → **Borrar contacto** (también está dentro de **Editar datos**). No deja borrar a alguien con un turno pendiente, en la fila o con deuda de cancelación. Sus cortes pasados no se pierden: quedan en la caja como ventas del mostrador. Si esa persona vuelve a reservar, se crea un contacto nuevo.
 

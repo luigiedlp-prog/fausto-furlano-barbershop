@@ -620,7 +620,7 @@ async function syncUpsert(db, env, ctx, B) {
   const open = x => ['pending', 'unrecorded'].includes(x);
   const cname = String(c.name || '').slice(0, 30), fd2 = `${t.date.slice(8)}/${t.date.slice(5, 7)} ${t.time}`;
   if (!ex) {
-    if (t.status === 'pending' && (await conflicts(db, staff.id, t.date, t.time, dur)).overlap) throw err(409, 'Santi ya tiene un turno en ese horario en la barbería');
+    // Sin bloqueos: se carga aunque el horario ya tenga otro turno (sobreturno).
     const cid = await syncClient(db, c.name, c.whatsapp), sid = await syncService(db, t), id = uid('a');
     const done = t.status === 'done', amt = done && (env.SYNC_CONTAR_INGRESOS === '1' || t.source === 'barberia') ? price : 0;
     await db.batch([
@@ -636,7 +636,6 @@ async function syncUpsert(db, env, ctx, B) {
   if (!open(ex.status)) { await bump().run(); return { ok: true, skipped: 'turno ya cerrado' }; }
   if (t.status === 'pending') {
     const changed = ex.date !== t.date || ex.time !== t.time || ex.duration !== dur;
-    if (changed && (await conflicts(db, ex.staff_id, t.date, t.time, dur, ex.id)).overlap) throw err(409, 'Santi ya tiene un turno en ese horario en la barbería');
     await db.prepare("UPDATE bp_appts SET date=?,time=?,duration=?,price=?,service_name=?,status='pending',reminded=CASE WHEN ?=1 THEN 0 ELSE reminded END,ext_rev=? WHERE id=?")
       .bind(t.date, t.time, dur, price, String(t.service_name).slice(0, 80), changed ? 1 : 0, rev, ex.id).run();
     if (changed) ctx.waitUntil(notifyStaff(env, db, ex.staff_id, `Turno de Santi reprogramado: ${cname} · ${fd2}`));
