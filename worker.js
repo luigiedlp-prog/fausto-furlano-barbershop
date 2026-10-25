@@ -1065,7 +1065,7 @@ async function route(req, db, u, p, env, ctx) {
     const cid = String(u.searchParams.get('id') || '');
     if (!(await db.prepare('SELECT id FROM bp_clients WHERE id=?').bind(cid).first())) throw err(404, 'Cliente no encontrado');
     const rows = (await db.prepare("SELECT a.id,a.kind,a.date,a.time,a.service_name,a.status,a.amount,a.price,a.prod_total,a.ext_src,a.staff_id,s.name sname FROM bp_appts a LEFT JOIN bp_staff s ON s.id=a.staff_id WHERE a.client_id=? AND a.kind IN('turno','fila') ORDER BY a.date DESC,a.time DESC,a.created_at DESC LIMIT 200").bind(cid).all()).results;
-    return J(200, { items: rows.map(r => ({ id: r.id, kind: r.kind, date: r.date, time: r.time, service: r.service_name, status: r.status, staff: r.sname || '', amount: (r.status === 'done' ? (r.amount || 0) + (r.prod_total || 0) : r.price || 0), locked: r.ext_src === SYNC_SRC })) });
+    return J(200, { items: rows.map(r => ({ id: r.id, kind: r.kind, date: r.date, time: r.time, service: r.service_name, status: r.status, staff: r.sname || '', amount: (r.status === 'done' ? (r.amount || 0) + (r.prod_total || 0) : r.price || 0), locked: r.ext_src === SYNC_SRC && r.status !== 'cancelled' })) });
   }
   if (p === '/api/admin/client/dedupe' && req.method === 'POST') { // deja un solo turno por (barbero, día, hora): conserva el hecho, o el más antiguo
     const rows = (await db.prepare("SELECT a.*,c.name cname FROM bp_appts a JOIN bp_clients c ON c.id=a.client_id WHERE a.client_id=? AND a.kind='turno' AND a.status IN('pending','done') AND a.ext_src IS NULL ORDER BY (a.status='done') DESC,a.created_at ASC,a.id ASC").bind(String(B.id || '')).all()).results, seen = new Set();
@@ -1078,7 +1078,7 @@ async function route(req, db, u, p, env, ctx) {
   if (p === '/api/appt/del' && req.method === 'POST') { // solo el dueño: borra un turno de la ficha del cliente (p. ej. uno cargado dos veces), en cualquier estado
     const a = await db.prepare("SELECT a.*,c.name cname FROM bp_appts a JOIN bp_clients c ON c.id=a.client_id WHERE a.id=? AND a.kind IN('turno','fila')").bind(String(B.id || '')).first();
     if (!a) throw err(404, 'Ese turno no existe (puede que ya lo hayan borrado)');
-    if (a.ext_src === SYNC_SRC) throw err(409, 'Este turno viene de la agenda de Santi: no se puede borrar desde acá.');
+    if (a.ext_src === SYNC_SRC && a.status !== 'cancelled') throw err(409, 'Este turno está vinculado con el sistema de Santi: solo se puede borrar si está cancelado. Cancelalo primero.');
     if (await db.prepare('SELECT id FROM bp_fees WHERE appt_id=?').bind(a.id).first()) throw err(409, 'Tiene una cancelación con cobro asociado, no se puede borrar.');
     await delApptRow(db, me, a);
     return J(200, { ok: true });

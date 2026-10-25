@@ -37,7 +37,7 @@ Los servicios, precios, duraciones y horarios (lunes a sábado, de 8 a 21) son l
 **Dónde se ve:** en *Mi día → Fila* (todos) y en *Agenda → Fila* (Fausto ve toda la fila del día). **+ Fila** en Agenda carga a alguien que llegó sin turno.
 
 ## Turnos de un cliente (ficha)
-Solo el dueño: Contactos → tocar el cliente. Abajo de los datos aparece la lista de **todos sus turnos** con día, hora, servicio, **quién cortó** y estado (pendiente, hecho, no asistió, cancelado). Cada uno tiene **Borrar** (sirve para turnos duplicados): si estaba hecho sale de la caja y de las visitas del cliente, y los productos vuelven al stock. Los turnos repetidos (mismo día, hora y barbero) se marcan con ⚠. No se borran los que vienen de la agenda de Santi ni los que tienen una cancelación con cobro.
+Solo el dueño: Contactos → tocar el cliente. Abajo de los datos aparece la lista de **todos sus turnos** con día, hora, servicio, **quién cortó** y estado (pendiente, hecho, no asistió, cancelado). Cada uno tiene **Borrar** (sirve para turnos duplicados): si estaba hecho sale de la caja y de las visitas del cliente, y los productos vuelven al stock. Los turnos repetidos (mismo día, hora y barbero) se marcan con ⚠. Los turnos vinculados con el sistema de Santi solo se pueden borrar si están cancelados (cancelalos primero); tampoco se borran los que tienen una cancelación con cobro asociado.
 
 **Anti-duplicados:** un mismo cliente no puede tener dos turnos con el mismo barbero, día y hora (pendientes o ya hechos), ni por la reserva online ni cargados desde el panel; si se intenta, no se crea otro y el panel avisa "ya estaba cargado". En la fila, el mismo cliente no puede anotarse dos veces para el mismo servicio en el día (ni de nuevo dentro de los 15 minutos de haberlo hecho).
 
