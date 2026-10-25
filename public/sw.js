@@ -1,11 +1,11 @@
 // Service worker: app instalable + avisos push (mismo sistema que Melly Barber y BarberFlowBR). Nunca guarda /api (siempre datos en vivo).
-const CACHE='bp13';
+const CACHE='bp12';
 self.addEventListener('install',()=>self.skipWaiting());
 self.addEventListener('activate',e=>e.waitUntil((async()=>{for(const k of await caches.keys())if(k!==CACHE)await caches.delete(k);await self.clients.claim()})()));
 self.addEventListener('push',e=>{
   let d={};try{d=e.data?e.data.json():{}}catch(_){d={body:e.data?e.data.text():''}}
   e.waitUntil((async()=>{
-    await self.registration.showNotification(d.title||'Fausto Furlano Buti Barber Shop',{body:d.body||'',icon:'/icon-192.png',badge:'/icon-192.png',tag:d.tag||undefined,data:{url:d.url||'/'}});
+    await self.registration.showNotification(d.title||'Fausto Furlano Buti Barber Shop',{body:d.body||'',icon:'/icon-192.png',badge:'/badge-96.png',tag:d.tag||undefined,data:{url:d.url||'/'}});
     const cs=await self.clients.matchAll({type:'window',includeUncontrolled:true});
     cs.forEach(c=>c.postMessage({type:'push',url:d.url||'/'}));
   })());
