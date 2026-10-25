@@ -47,10 +47,10 @@ Solo el dueño: Contactos → tocar el cliente. Abajo de los datos aparece la li
 
 **Sin bloqueos al cargar:** desde el panel se puede cargar cualquier cantidad de turnos al mismo horario (sobreturnos), y lo que llega desde el sistema de Santi tampoco se rechaza por horario lleno. La reserva online sigue mostrando solo los horarios libres.
 
-## Avisos del dueño (pantalla Mi día)
-- **Envíos fallidos a Santi:** si un turno no pudo cargarse en su sistema, aparece con el motivo y los botones **Reintentar** (solo si sigue pendiente) y **Descartar**.
-- **WhatsApp repetidos:** el mismo número cargado distinto (con/sin 9, con 54, etc.) se detecta y se unifica en una sola ficha (**Revisar → Unificar**). Los clientes nuevos se buscan por los últimos 10 dígitos y se guardan como 549…, así no se vuelven a duplicar.
-- **Copia de seguridad:** avisa si pasaron 7 días o más. **Descargar copia** (también en Ajustes → Más) baja un archivo JSON con todos los datos, sin PINs, sesiones ni suscripciones push; las imágenes se incluyen agregando `?full=1` a `/api/admin/backup`. Cloudflare además guarda por unos días versiones anteriores de la base (Time Travel de D1).
+## Avisos del dueño (cada uno en su pantalla)
+- **Envíos fallidos a Santi** (pestaña Agenda): si un turno no pudo cargarse en su sistema, aparece con el motivo y los botones **Reintentar** (solo si sigue pendiente) y **Descartar**.
+- **WhatsApp repetidos** (pestaña Clientes): el mismo número cargado distinto (con/sin 9, con 54, etc.) se detecta y se unifica en una sola ficha (**Revisar → Unificar**). Los clientes nuevos se buscan por los últimos 10 dígitos y se guardan como 549…, así no se vuelven a duplicar.
+- **Copia de seguridad** (pestaña Finanzas): avisa si pasaron 7 días o más. **Descargar copia** (también en Ajustes → Más) baja un archivo JSON con todos los datos, sin PINs, sesiones ni suscripciones push; las imágenes se incluyen agregando `?full=1` a `/api/admin/backup`. Cloudflare además guarda por unos días versiones anteriores de la base (Time Travel de D1).
 
 ## Restaurar una copia
 Ajustes → Más → **Restaurar copia** (solo dueño): se elige el archivo .json de la copia de seguridad. Antes de cargar nada, la app baja automáticamente una copia de lo actual (`copia-antes-de-restaurar.json`).
