@@ -50,7 +50,7 @@ function vDia(){
   const t=M.day.filter(a=>a.kind==='turno'&&a.status==='pending').sort((a,b)=>a.time.localeCompare(b.time)),f=M.day.filter(a=>a.kind==='fila'&&a.status==='pending'),c=M.day.filter(a=>a.status!=='pending'&&a.kind!=='venta'),n=t[0]||f[0],pv=M.day.filter(a=>a.status==='done'&&(a.items||[]).length).sort((a,b)=>String(b.created_at).localeCompare(String(a.created_at))),pu=pv.reduce((t,a)=>t+a.items.reduce((s,i)=>s+i.qty,0),0),pt=pv.reduce((t,a)=>t+a.items.reduce((s,i)=>s+i.qty*i.price,0),0);
   const empty=x=>`<div class="group"><div class="empty"><b>${x}</b></div></div>`;
   const unr=M.unrec&&M.unrec.n?`<div class="group pad" style="margin-bottom:12px"><b>${M.unrec.n} turno${M.unrec.n===1?'':'s'} sin registrar</b><p class="hint">Quedaron pendientes de días anteriores. Marcá si se hicieron, si faltó el cliente o si se cancelaron.</p><button class="btn" onclick="agDate='${M.unrec.d}';AG=null;go('ag')">Ver el último</button></div>`:'';
-  return `${unr}${maintBanners()}<h1 class="title">Mi día</h1>${PUSH.card('banner')}
+  return `${unr}<h1 class="title">Mi día</h1>${PUSH.card('banner')}
   <section class="today"><div class="d">${longDate(M.today)}</div><div class="m"><div><b>${t.length}</b><span>turnos</span></div><div><b>${f.length}</b><span>en fila</span></div><div><b>${M.earn.today.n}</b><span>hechos</span></div></div></section>
   ${n?`<div class="next now" style="margin-top:14px"><span class="t">${n.kind==='turno'?esc(n.time):'Fila'}</span><div class="mn"><span class="lb">${n.kind==='turno'?'Próximo turno':'Siguiente en la fila'}</span><b>${esc(n.cname)}</b><small>${esc(n.service_name)} · ${fmt(n.price)}</small></div><button class="qd" onclick="doneSheet('${n.id}')" aria-label="Hecho">${ico('check')}</button></div>`:''}
   ${sec('Turnos',t.length+' pendientes',t.length?t.map(ev).join(''):empty('Sin turnos pendientes'))}
@@ -101,7 +101,7 @@ async function doPay(id){try{await post('/admin/payout',{staff:id,amount:$('pa')
 const ago=d=>d?Math.floor((new Date(M.today)-new Date(d))/864e5):0;
 const FL={all:['Todos',c=>1],old:['Hace tiempo',c=>c.visits>0&&ago(c.last_visit)>=30],bd:['Cumple este mes',c=>!!c.birthday&&c.birthday.slice(5,7)===M.today.slice(5,7)],ns:['Faltan seguido',c=>c.no_shows>=2]};
 const cards=()=>{const l=A.clients.filter(c=>FL[fl][1](c)&&(c.name+c.whatsapp).toLowerCase().includes(q.toLowerCase()));return l.map(c=>`<button class="lrow" onclick="cliSheet('${c.id}')"><span class="avatar">${esc(initials(c.name))}</span><span class="main"><b>${esc(c.name)}${c.birthday&&c.birthday.slice(5)===M.today.slice(5)?' 🎂':''}</b><small>${c.visits} visita${c.visits===1?'':'s'} · última ${esc(c.last_visit||'—')}</small></span><span class="chev">${ico('chev')}</span></button>`).join('')||'<div class="empty"><b>Sin resultados</b></div>'};
-function vCli(){return `<h1 class="title">Clientes</h1><p class="sub" style="margin:-8px 0 14px">${A.clients.length} registrados</p><div class="seg" style="margin-bottom:12px;flex-wrap:wrap">${Object.keys(FL).map(k=>`<button class="${fl===k?'on':''}" onclick="fl='${k}';draw()">${FL[k][0]}</button>`).join('')}</div><input class="search" placeholder="Buscar por nombre o WhatsApp" value="${esc(q)}" oninput="q=this.value;$('cl').innerHTML=cards()"><div class="group" id="cl">${cards()}</div>`}
+function vCli(){return `<h1 class="title">Clientes</h1><p class="sub" style="margin:-8px 0 14px">${A.clients.length} registrados</p>${maintDups()}<div class="seg" style="margin-bottom:12px;flex-wrap:wrap">${Object.keys(FL).map(k=>`<button class="${fl===k?'on':''}" onclick="fl='${k}';draw()">${FL[k][0]}</button>`).join('')}</div><input class="search" placeholder="Buscar por nombre o WhatsApp" value="${esc(q)}" oninput="q=this.value;$('cl').innerHTML=cards()"><div class="group" id="cl">${cards()}</div>`}
 function wa(c){
   const n=esc(c.name.split(' ')[0]),b=A.settings.name,T=[['Gracias por venir',`¡Hola ${c.name.split(' ')[0]}! Gracias por venir a ${b}. ¡Te esperamos pronto!`],['Cumpleaños',`¡Feliz cumpleaños ${c.name.split(' ')[0]}! 🎂 De parte de todos en ${b}.`],['Hace que no venís',`¡Hola ${c.name.split(' ')[0]}! Hace un tiempo que no te vemos por ${b}. ¿Te reservamos un turno?`],['Recordar turno',`¡Hola ${c.name.split(' ')[0]}! Te recordamos tu turno en ${b}. Si no podés venir, avisanos.`]];
   return T.map(([l,m])=>`<a class="btn" style="display:block;text-align:center;margin-bottom:8px" target="_blank" rel="noopener" href="https://wa.me/${formatWA(c.whatsapp)}?text=${encodeURIComponent(m)}">${l}</a>`).join('');
@@ -143,7 +143,7 @@ async function delAppt(id,cid){
 /* ---- Finanzas y configuración ---- */
 function vFin(){
   const k=fper,m=A.fin[k],lab={day:'Hoy',week:'Esta semana',month:'Este mes'}[k],rows=A.expenses.filter(e=>e.date>=m.from&&e.date<=m.to);
-  return `<h1 class="title">Finanzas</h1><section class="today"><div class="d">${lab} · ganancia neta</div><div class="big">${fmt(m.net)}</div></section>
+  return `<h1 class="title">Finanzas</h1>${maintBackup()}<section class="today"><div class="d">${lab} · ganancia neta</div><div class="big">${fmt(m.net)}</div></section>
   <div class="seg" style="margin-top:14px">${[['day','Día'],['week','Semana'],['month','Mes']].map(([p,l])=>`<button class="${k===p?'on':''}" onclick="fper='${p}';draw()">${l}</button>`).join('')}</div>
   <button class="btn primary" style="width:100%;margin-top:14px" onclick="sumImage()">Generar resumen del día</button>
   <div class="group pad" style="margin-top:14px"><div class="hrow"><span>Ingresos${m.products||m.fees?`<small>${[m.products?'incluye '+fmt(m.products)+' de productos':'',m.fees?fmt(m.fees)+' de cancelaciones cobradas':''].filter(Boolean).join(' · ')}</small>`:''}</span><b>${fmt(m.income)}</b></div><div class="hrow"><span>Comisiones de los barberos${k==='month'?`<small>Pagado ${fmt(m.paid)} · falta pagar ${fmt(Math.max(0,m.commissions-m.paid))}</small>`:''}</span><b>− ${fmt(m.commissions)}</b></div><div class="hrow"><span>Gastos</span><b>− ${fmt(m.expenses)}</b></div></div>
@@ -262,7 +262,7 @@ const blkCard=b=>`<div class="group pad blk"><div class="hrow"><span><b>${ico('b
 function vAg(){
   if(!AG){loadAg().then(()=>{if(tab==='ag')draw()}).catch(e=>alertD(e.message));return '<h1 class="title">Agenda</h1><div class="group pad"><p class="hint">Cargando…</p></div>'}
   const d=AG.date,owner=M.me.role==='owner',dayB=AG.blocks.filter(b=>b.d1<=d&&b.d2>=d),later=AG.blocks.filter(b=>!(b.d1<=d&&b.d2>=d));
-  return `<h1 class="title">Agenda</h1>
+  return `<h1 class="title">Agenda</h1>${maintSync()}
   <div class="agnav"><button class="glassbtn" onclick="agGo(-1)" aria-label="Día anterior">${ico('chevL')}</button><label class="agd"><b>${longDate(d)}</b><input type="date" value="${d}" onchange="agSet(this.value)"></label><button class="glassbtn" onclick="agGo(1)" aria-label="Día siguiente">${ico('chev')}</button></div>
   ${d!==AG.today?`<button class="btn" style="width:100%;margin-bottom:10px" onclick="agSet('${AG.today}')">Ir a hoy</button>`:''}
   ${owner?`<div class="field" style="margin-top:0"><label>Barbero</label><select onchange="agStaff=this.value;AG=null;draw()"><option value="all">Todos</option>${A.team.filter(s=>s.active!==false).map(s=>`<option value="${s.id}" ${agStaff===s.id?'selected':''}>${esc(s.name)}</option>`).join('')}</select></div>`:''}
@@ -461,12 +461,17 @@ if('serviceWorker'in navigator)navigator.serviceWorker.addEventListener('message
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')pushRefresh()});
 
 /* ---- Avisos del dueño: envíos fallidos a Santi, WhatsApp repetidos y copia de seguridad ---- */
-function maintBanners(){
-  const m=A&&A.maint;if(!m)return '';let h='';
-  if(m.sync&&m.sync.length)h+=`<div class="group pad" style="margin-bottom:12px"><b>⚠ ${m.sync.length} turno${m.sync.length>1?'s':''} no ${m.sync.length>1?'llegaron':'llegó'} a Santi</b>${m.sync.map(s=>`<p class="hint" style="margin:8px 0 6px">${esc(s.cname||'—')} · ${s.date?dm(s.date)+' '+esc(s.time||''):''} · ${esc(s.service||'')}<br>${esc(s.err||'Error')}</p><div style="display:flex;gap:8px">${s.retry?`<button class="btn primary" onclick="syncRetry('${s.id}')">Reintentar</button>`:''}<button class="btn" onclick="syncDiscard('${s.id}')">Descartar</button></div>`).join('')}</div>`;
-  if(m.dups)h+=`<div class="group pad" style="margin-bottom:12px"><b>${m.dups} cliente${m.dups>1?'s':''} con el WhatsApp repetido</b><p class="hint">Es el mismo número cargado distinto (por ejemplo, con y sin el 9). Unificá las fichas para que no se dupliquen los turnos.</p><button class="btn" onclick="dupSheet()">Revisar</button></div>`;
-  if(m.backupDays===null||m.backupDays>=7)h+=`<div class="group pad" style="margin-bottom:12px"><b>${m.backupDays===null?'Todavía no descargaste una copia de seguridad':'Hace '+m.backupDays+' días que no descargás una copia de seguridad'}</b><p class="hint">Se baja un archivo con todos los datos al celular. Guardalo en un lugar seguro.</p><button class="btn" onclick="backupNow()">Descargar copia</button></div>`;
-  return h;
+function maintSync(){
+  const m=A&&A.maint;if(!m||!m.sync||!m.sync.length)return '';
+  return `<div class="group pad" style="margin-bottom:12px"><b>⚠ ${m.sync.length} turno${m.sync.length>1?'s':''} no ${m.sync.length>1?'llegaron':'llegó'} a Santi</b>${m.sync.map(s=>`<p class="hint" style="margin:8px 0 6px">${esc(s.cname||'—')} · ${s.date?dm(s.date)+' '+esc(s.time||''):''} · ${esc(s.service||'')}<br>${esc(s.err||'Error')}</p><div style="display:flex;gap:8px">${s.retry?`<button class="btn primary" onclick="syncRetry('${s.id}')">Reintentar</button>`:''}<button class="btn" onclick="syncDiscard('${s.id}')">Descartar</button></div>`).join('')}</div>`;
+}
+function maintDups(){
+  const m=A&&A.maint;if(!m||!m.dups)return '';
+  return `<div class="group pad" style="margin-bottom:12px"><b>${m.dups} cliente${m.dups>1?'s':''} con el WhatsApp repetido</b><p class="hint">Es el mismo número cargado distinto (por ejemplo, con y sin el 9). Unificá las fichas para que no se dupliquen los turnos.</p><button class="btn" onclick="dupSheet()">Revisar</button></div>`;
+}
+function maintBackup(){
+  const m=A&&A.maint;if(!m||!(m.backupDays===null||m.backupDays>=7))return '';
+  return `<div class="group pad" style="margin-bottom:12px"><b>${m.backupDays===null?'Todavía no descargaste una copia de seguridad':'Hace '+m.backupDays+' días que no descargás una copia de seguridad'}</b><p class="hint">Se baja un archivo con todos los datos al celular. Guardalo en un lugar seguro.</p><button class="btn" onclick="backupNow()">Descargar copia</button></div>`;
 }
 async function syncRetry(id){try{await post('/admin/sync/retry',{id});await load();draw();toast('Reenviando a Santi…')}catch(e){alertD(e.message)}}
 async function syncDiscard(id){
