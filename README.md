@@ -47,6 +47,23 @@ Solo el dueño: Contactos → tocar el cliente. Abajo de los datos aparece la li
 
 **Sin bloqueos al cargar:** desde el panel se puede cargar cualquier cantidad de turnos al mismo horario (sobreturnos), y lo que llega desde el sistema de Santi tampoco se rechaza por horario lleno. La reserva online sigue mostrando solo los horarios libres.
 
+## Avisos del dueño (pantalla Mi día)
+- **Envíos fallidos a Santi:** si un turno no pudo cargarse en su sistema, aparece con el motivo y los botones **Reintentar** (solo si sigue pendiente) y **Descartar**.
+- **WhatsApp repetidos:** el mismo número cargado distinto (con/sin 9, con 54, etc.) se detecta y se unifica en una sola ficha (**Revisar → Unificar**). Los clientes nuevos se buscan por los últimos 10 dígitos y se guardan como 549…, así no se vuelven a duplicar.
+- **Copia de seguridad:** avisa si pasaron 7 días o más. **Descargar copia** (también en Ajustes → Más) baja un archivo JSON con todos los datos, sin PINs, sesiones ni suscripciones push; las imágenes se incluyen agregando `?full=1` a `/api/admin/backup`. Cloudflare además guarda por unos días versiones anteriores de la base (Time Travel de D1).
+
+## Restaurar una copia
+Ajustes → Más → **Restaurar copia** (solo dueño): se elige el archivo .json de la copia de seguridad. Antes de cargar nada, la app baja automáticamente una copia de lo actual (`copia-antes-de-restaurar.json`).
+- **Recuperar lo que falta:** vuelve a cargar lo que se borró, sin pisar nada de lo que hoy existe (lo más seguro).
+- **Reemplazar todo:** deja los datos como estaban en la copia (pide escribir RESTAURAR).
+No se tocan el equipo ni los PINs, la cola de Santi, el registro de cambios ni los datos de recuperación del PIN. Restaurar no reenvía turnos a Santi. Todo se carga en una sola operación: si falla, no queda nada a medias.
+
+## Borrar turnos vinculados con Santi
+Pendientes: se cancelan también en el sistema de Santi y se borran acá (si Santi no responde, no se borra nada). Cancelados: se borran acá. Hechos o cerrados: no se pueden borrar desde acá. Al borrar queda una marca (`bp_tomb`, 120 días) para que el aviso de vuelta de Santi no recree el turno.
+
+## Límite de intentos
+Desactivado (`LIMITS = false` en `worker.js`): no hay bloqueo por PIN incorrecto ni tope de reservas por conexión. Para reactivarlo, cambiar a `true`.
+
 ## Borrar contactos
 Solo el dueño: Contactos → tocar el cliente → **Borrar contacto** (también está dentro de **Editar datos**). No deja borrar a alguien con un turno pendiente, en la fila o con deuda de cancelación. Sus cortes pasados no se pierden: quedan en la caja como ventas del mostrador. Si esa persona vuelve a reservar, se crea un contacto nuevo.
 

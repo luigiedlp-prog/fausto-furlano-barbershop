@@ -71,3 +71,4 @@ CREATE UNIQUE INDEX IF NOT EXISTS bp_appts_ext ON bp_appts(ext_src,ext_id) WHERE
 -- Cola de salida hacia el sistema de Santi (v8-sync2). Los triggers los crea el Worker al arrancar.
 CREATE TABLE IF NOT EXISTS bp_sync_out (appt_id TEXT PRIMARY KEY,estado TEXT NOT NULL DEFAULT 'pendiente',intentos INTEGER NOT NULL DEFAULT 0,proximo INTEGER NOT NULL DEFAULT 0,ultimo_error TEXT,t INTEGER NOT NULL DEFAULT 0);
 CREATE UNIQUE INDEX IF NOT EXISTS bp_appts_uq ON bp_appts(client_id,staff_id,date,time) WHERE kind='turno' AND status IN ('pending','done') AND ext_src IS NULL;
+CREATE TABLE IF NOT EXISTS bp_tomb (ext_id TEXT PRIMARY KEY,t INTEGER NOT NULL);

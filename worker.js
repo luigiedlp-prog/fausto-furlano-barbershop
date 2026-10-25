@@ -62,6 +62,7 @@ async function init(db) {
   await db.prepare('ALTER TABLE bp_appts ADD COLUMN ext_id TEXT').run().catch(() => {});
   await db.prepare('ALTER TABLE bp_appts ADD COLUMN ext_rev INTEGER').run().catch(() => {});
   await db.prepare('CREATE UNIQUE INDEX IF NOT EXISTS bp_appts_ext ON bp_appts(ext_src,ext_id) WHERE ext_src IS NOT NULL').run().catch(() => {});
+  await db.prepare('CREATE TABLE IF NOT EXISTS bp_tomb (ext_id TEXT PRIMARY KEY,t INTEGER NOT NULL)').run().catch(() => {});
   // Un mismo cliente no puede tener dos turnos con el mismo barbero, día y hora (pendientes o hechos): cierra los duplicados por pedidos simultáneos. Si hubiera duplicados viejos, no se crea hasta borrarlos.
   await db.prepare("CREATE UNIQUE INDEX IF NOT EXISTS bp_appts_uq ON bp_appts(client_id,staff_id,date,time) WHERE kind='turno' AND status IN ('pending','done') AND ext_src IS NULL").run().catch(() => {});
   // Cola de salida hacia el sistema de Santi: todo turno nuevo (o reasignado a alguien) del local; al enviar solo pasan los de Santi.
@@ -167,7 +168,7 @@ const delApptRow = async (db, me, a) => { // borra un turno de cualquier estado 
 };
 const weakPin = async (db, id) => { const s = await db.prepare('SELECT pin_hash FROM bp_staff WHERE id=?').bind(id).first(); for (const p of ['1234', '1111', '2222', '3333', '4444']) if (s && s.pin_hash === await hash(p)) return true; return false; };
 // Límite de intentos: lockCheck corta si ya se llegó al máximo dentro de la ventana; lockHit suma un intento; lockClear lo borra.
-const LIMITS = false; // false = límite de intentos DESACTIVADO (PIN, recuperación, cambio de PIN y anti-spam de reservas). Poné true para reactivarlo.
+const LIMITS = false; // false = límite de intentos DESACTIVADO (PIN, recuperación, cambio de PIN y anti-spam de reservas). Poné true para reactivarlo. (PIN, recuperación, cambio de PIN y anti-spam de reservas). Poné true para reactivarlo.
 async function lockCheck(db, k, max, win) { if (!LIMITS) return; const r = await db.prepare('SELECT n,t FROM bp_limits WHERE k=?').bind(k).first(), left = r ? r.t + win - Date.now() : 0; if (r && left > 0 && r.n >= max) throw err(429, `Demasiados intentos. Probá de nuevo en ${Math.ceil(left / MIN)} min.`); }
 async function lockHit(db, k, win) { if (!LIMITS) return; const r = await db.prepare('SELECT n,t FROM bp_limits WHERE k=?').bind(k).first(); if (!r || Date.now() - r.t >= win) await db.prepare('INSERT OR REPLACE INTO bp_limits(k,n,t) VALUES(?,1,?)').bind(k, Date.now()).run(); else await db.prepare('UPDATE bp_limits SET n=n+1 WHERE k=?').bind(k).run(); }
 const lockClear = (db, k) => db.prepare('DELETE FROM bp_limits WHERE k=?').bind(k).run();
@@ -255,7 +256,7 @@ const prodSum = rows => rows.reduce((t, r) => t + r.qty * r.price, 0);
 const itemsText = rows => rows.map(r => `${r.qty} × ${r.name}`).join(', ');
 const itemStmts = (db, apptId, rows) => rows.map(r => db.prepare('INSERT INTO bp_items(id,appt_id,product_id,name,qty,price,comm_pct,held,cost) VALUES(?,?,?,?,?,?,?,?,?)').bind(uid('i'), apptId, r.product_id, r.name, r.qty, r.price, r.comm_pct, r.held, r.cost || 0));
 // Anti-duplicados: si el mismo pedido llega dos veces seguidas (doble toque, reintento, dos pestañas) devuelve el turno ya cargado en vez de crear otro.
-const dupAppt = (db, wa, where, binds, secs, sts = "'pending'") => db.prepare(`SELECT a.id,a.status FROM bp_appts a JOIN bp_clients c ON c.id=a.client_id WHERE c.whatsapp=? AND a.status IN (${sts}) ${secs ? "AND a.created_at >= datetime('now', ?)" : ''} AND ${where} LIMIT 1`).bind(String(wa || '').replace(/\D/g, ''), ...(secs ? [`-${secs} seconds`] : []), ...binds).first(); // secs=0 → sin ventana de tiempo (cualquier turno ya cargado cuenta)
+const dupAppt = (db, wa, where, binds, secs, sts = "'pending'") => db.prepare(`SELECT a.id,a.status FROM bp_appts a JOIN bp_clients c ON c.id=a.client_id WHERE substr(c.whatsapp,-10)=? AND a.status IN (${sts}) ${secs ? "AND a.created_at >= datetime('now', ?)" : ''} AND ${where} LIMIT 1`).bind(String(wa || '').replace(/\D/g, '').slice(-10), ...(secs ? [`-${secs} seconds`] : []), ...binds).first(); // secs=0 → sin ventana de tiempo (cualquier turno ya cargado cuenta)
 const giveBack = async (db, rows) => { for (const r of rows) if (r.held) await db.prepare('UPDATE bp_products SET stock=stock+? WHERE id=?').bind(r.qty, r.product_id).run(); };
 const lowNotify = (ctx, env, db, low) => { for (const l of low) ctx.waitUntil(notifyStaff(env, db, null, `Quedan ${l.left} de ${l.name}`, 'stock')); };
 // Compara lo pedido contra lo que el turno ya tenía: reserva (o devuelve) solo la diferencia, y se deshace todo si algo falla.
@@ -311,12 +312,13 @@ async function slots(db, date, svc, staff, extra = []) {
   }
   return out;
 }
+const canonWa = d => { d = String(d || '').replace(/\D/g, '').replace(/^00/, ''); if (d.length === 11 && d[0] === '0') d = d.slice(1); if (d.length === 10) return '549' + d; if (d.length === 12 && d.startsWith('54') && d[2] !== '9') return '549' + d.slice(2); if (d.length === 11 && d[0] === '9') return '54' + d; return d; };
 async function client(db, name, wa, bd) {
-  wa = String(wa || '').replace(/\D/g, ''); name = String(name || '').trim().slice(0, 80);
+  wa = canonWa(wa); name = String(name || '').trim().slice(0, 80);
   if (!name) throw err(400, 'Ingresá tu nombre');
   if (wa.length < 8) throw err(400, 'Ingresá un WhatsApp válido');
   bd = /^\d{4}-\d{2}-\d{2}$/.test(bd || '') ? bd : null;
-  const c = await db.prepare('SELECT id FROM bp_clients WHERE whatsapp=?').bind(wa).first();
+  const c = await db.prepare('SELECT id FROM bp_clients WHERE substr(whatsapp,-10)=?').bind(wa.slice(-10)).first();
   if (c) { if (bd) await db.prepare('UPDATE bp_clients SET birthday=? WHERE id=?').bind(bd, c.id).run(); return c.id; }
   const id = uid('c'); await db.prepare('INSERT INTO bp_clients(id,name,whatsapp,birthday) VALUES(?,?,?,?)').bind(id, name, wa, bd).run(); return id;
 }
@@ -507,6 +509,17 @@ async function runRecurring(db, n) {
     ]);
   }
 }
+// Avisos para el dueño: envíos fallidos a Santi, WhatsApp repetidos y antigüedad de la última copia de seguridad.
+const dupGroups = async db => {
+  const rows = (await db.prepare("SELECT id,name,whatsapp,visits,total_spent,last_visit FROM bp_clients WHERE length(whatsapp)>=8 AND substr(whatsapp,-10) IN (SELECT substr(whatsapp,-10) FROM bp_clients WHERE length(whatsapp)>=8 GROUP BY substr(whatsapp,-10) HAVING COUNT(*)>1) ORDER BY substr(whatsapp,-10)").all()).results, g = {};
+  for (const r of rows) (g[r.whatsapp.slice(-10)] ||= []).push(r);
+  return Object.entries(g).map(([key, items]) => ({ key, items: items.sort((x, y) => (y.visits - x.visits) || ((y.whatsapp.startsWith('549') ? 1 : 0) - (x.whatsapp.startsWith('549') ? 1 : 0)) || (y.whatsapp.length - x.whatsapp.length)) }));
+};
+async function maintInfo(db) {
+  const sync = (await db.prepare("SELECT o.appt_id id,o.intentos,o.ultimo_error err,a.date,a.time,a.status,a.service_name service,c.name cname FROM bp_sync_out o LEFT JOIN bp_appts a ON a.id=o.appt_id LEFT JOIN bp_clients c ON c.id=a.client_id WHERE o.estado='error' ORDER BY o.t DESC LIMIT 20").all()).results.map(r => ({ ...r, retry: r.status === 'pending' }));
+  const bk = await db.prepare("SELECT v FROM bp_settings WHERE k='last_backup'").first(), days = bk ? Math.floor((Date.now() - Date.parse(bk.v)) / 864e5) : null;
+  return { sync, dups: (await dupGroups(db)).length, backupDays: Number.isFinite(days) ? days : null };
+}
 async function adminData(db, st, n) {
   await runRecurring(db, n);
   const R0 = rng(n.date), pct = +st.commission, m = R0.m, wk = R0.w, Q = [], ix = {};
@@ -573,7 +586,7 @@ async function adminData(db, st, n) {
   const clients = rw('clients'), debts = Object.fromEntries(rw('debts').map(r => [r.c, r.t]));
   clients.forEach(c => { c.debt = debts[c.id] || 0; });
   const staff_all = rw('staffAll').map(s => ({ ...s, active: !!s.active }));
-  return { daily, sales: rw('sales'), staff_all, promos: rw('promos'), cash, caja, recurring: rw('recurring'), team, month, fin, expenses: expList, clients, settings: { name: st.name, commission: +st.commission, address: st.address || '', phone: st.phone || '', instagram: st.instagram || '', schedule: JSON.parse(st.schedule || '{}'), book_days: +st.book_days || 3, slot_step: +st.slot_step || 15, logo: st.logo || null, late_mode: ['off', 'fee'].includes(st.late_mode) ? st.late_mode : 'warn', late_hours: +st.late_hours || 1, late_pct: +st.late_pct || 50, pin_max: +st.pin_max || 5, pin_lock: +st.pin_lock || 15, security: { question: st.sec_q || '', set: !!st.sec_a } }, today: n.date, now: n.date + 'T' + hm(n.min) };
+  return { maint: await maintInfo(db), daily, sales: rw('sales'), staff_all, promos: rw('promos'), cash, caja, recurring: rw('recurring'), team, month, fin, expenses: expList, clients, settings: { name: st.name, commission: +st.commission, address: st.address || '', phone: st.phone || '', instagram: st.instagram || '', schedule: JSON.parse(st.schedule || '{}'), book_days: +st.book_days || 3, slot_step: +st.slot_step || 15, logo: st.logo || null, late_mode: ['off', 'fee'].includes(st.late_mode) ? st.late_mode : 'warn', late_hours: +st.late_hours || 1, late_pct: +st.late_pct || 50, pin_max: +st.pin_max || 5, pin_lock: +st.pin_lock || 15, security: { question: st.sec_q || '', set: !!st.sec_a } }, today: n.date, now: n.date + 'T' + hm(n.min) };
 }
 
 
@@ -612,6 +625,7 @@ async function syncUpsert(db, env, ctx, B) {
   if (!(dur >= 5 && dur <= 600) || !(price >= 0) || !String(t.service_name || '').trim()) throw err(400, 'Servicio inválido');
   if (!['pending', 'cancelled', 'no_show', 'done'].includes(t.status)) throw err(400, 'Estado inválido');
   t.duration = dur; t.price = price;
+  if (await db.prepare('SELECT 1 x FROM bp_tomb WHERE ext_id=?').bind(eid).first()) return { ok: true, id: eid, ignored: true }; // turno borrado a propósito acá: no se vuelve a crear
   const staff = await syncStaff(db, env); let ex = await db.prepare('SELECT * FROM bp_appts WHERE ext_src=? AND ext_id=?').bind(SYNC_SRC, eid).first();
   if (!ex && B.fausto_id) { // turno cargado acá que Santi acaba de copiar y todavía no quedó vinculado: se vincula, no se duplica
     ex = await db.prepare('SELECT * FROM bp_appts WHERE id=? AND ext_src IS NULL AND staff_id=?').bind(String(B.fausto_id), staff.id).first();
@@ -1061,11 +1075,76 @@ async function route(req, db, u, p, env, ctx) {
   }
   if (me.role !== 'owner') throw err(403, 'Solo el dueño puede ver esto');
   if (p === '/api/admin') return J(200, await adminData(db, st, n));
+  if (p === '/api/admin/sync/retry' && req.method === 'POST') { // vuelve a mandar a Santi un turno que no pudo cargarse
+    const r = await db.prepare("SELECT a.status FROM bp_sync_out o LEFT JOIN bp_appts a ON a.id=o.appt_id WHERE o.appt_id=? AND o.estado='error'").bind(String(B.id || '')).first();
+    if (!r) throw err(404, 'Ese aviso ya no existe');
+    if (r.status !== 'pending') throw err(409, 'Ese turno ya no está pendiente, no se puede reenviar. Descartá el aviso.');
+    await db.prepare("UPDATE bp_sync_out SET estado='pendiente',intentos=0,proximo=0,ultimo_error=NULL WHERE appt_id=?").bind(String(B.id)).run();
+    return J(200, { ok: true });
+  }
+  if (p === '/api/admin/sync/discard' && req.method === 'POST') {
+    await db.prepare("UPDATE bp_sync_out SET estado='descartado' WHERE appt_id=? AND estado='error'").bind(String(B.id || '')).run();
+    await audit(db, me, 'Descartó un aviso de envío a Santi', String(B.id || '').slice(0, 40));
+    return J(200, { ok: true });
+  }
+  if (p === '/api/admin/clients/dups') return J(200, { groups: await dupGroups(db) });
+  if (p === '/api/admin/client/merge' && req.method === 'POST') { // junta dos fichas del mismo cliente (mismo WhatsApp escrito distinto) en una sola
+    const keep = String(B.keep || ''), drop = String(B.drop || '');
+    if (!keep || keep === drop) throw err(400, 'Elegí dos fichas distintas');
+    const k = await db.prepare('SELECT * FROM bp_clients WHERE id=?').bind(keep).first(), d0 = await db.prepare('SELECT * FROM bp_clients WHERE id=?').bind(drop).first();
+    if (!k || !d0) throw err(404, 'No se encontró la ficha (puede que ya la hayan unificado)');
+    if (k.whatsapp.slice(-10) !== d0.whatsapp.slice(-10)) throw err(409, 'Solo se pueden unificar fichas con el mismo WhatsApp.');
+    const clash = (await db.prepare("SELECT a.*,c.name cname FROM bp_appts a JOIN bp_clients c ON c.id=a.client_id WHERE a.client_id=? AND a.kind='turno' AND a.status IN('pending','done') AND a.ext_src IS NULL AND EXISTS (SELECT 1 FROM bp_appts b WHERE b.client_id=? AND b.kind='turno' AND b.status IN('pending','done') AND b.ext_src IS NULL AND b.staff_id=a.staff_id AND b.date=a.date AND b.time=a.time)").bind(d0.id, k.id).all()).results;
+    for (const a of clash) await delApptRow(db, me, a); // turnos repetidos entre las dos fichas: queda el de la ficha principal
+    const d = await db.prepare('SELECT * FROM bp_clients WHERE id=?').bind(d0.id).first();
+    await db.batch([
+      db.prepare('UPDATE bp_appts SET client_id=? WHERE client_id=?').bind(k.id, d.id),
+      db.prepare('UPDATE bp_fees SET client_id=? WHERE client_id=?').bind(k.id, d.id),
+      db.prepare('UPDATE bp_clients SET visits=visits+?,no_shows=no_shows+?,total_spent=total_spent+?,last_visit=CASE WHEN ? IS NOT NULL AND (last_visit IS NULL OR ?>last_visit) THEN ? ELSE last_visit END,birthday=COALESCE(birthday,?),notes=COALESCE(notes,?) WHERE id=?').bind(d.visits || 0, d.no_shows || 0, d.total_spent || 0, d.last_visit, d.last_visit, d.last_visit, d.birthday, d.notes, k.id),
+      db.prepare('DELETE FROM bp_clients WHERE id=?').bind(d.id)]);
+    await audit(db, me, 'Unificó clientes', `${d.name} (${d.whatsapp}) → ${k.name} (${k.whatsapp})`);
+    return J(200, { ok: true });
+  }
+  if (p === '/api/admin/restore' && req.method === 'POST') { // carga una copia de seguridad: 'merge' = recupera lo que falta (no pisa nada); 'replace' = deja los datos como estaban en la copia
+    const d = B.data, mode = B.mode === 'replace' ? 'replace' : 'merge';
+    if (!d || d.app !== 'fausto-furlano-barbershop' || !d.tablas || typeof d.tablas !== 'object') throw err(400, 'Ese archivo no es una copia de esta app');
+    const SKIP = new Set(['bp_staff', 'bp_sync_out', 'bp_tomb', 'bp_audit', 'bp_sessions', 'bp_limits', 'bp_subs']); // equipo y PINs, cola de Santi, registro y sesiones no se tocan
+    const real = (await db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND substr(name,1,3)='bp_'").all()).results.map(x => x.name);
+    const trg = (await db.prepare("SELECT name,sql FROM sqlite_master WHERE type='trigger' AND tbl_name='bp_appts'").all()).results;
+    const stm = [], per = {}; let rows = 0;
+    for (const t of Object.keys(d.tablas)) {
+      const list = d.tablas[t];
+      if (SKIP.has(t) || !real.includes(t) || !Array.isArray(list) || (t === 'bp_images' && !d.completa)) continue;
+      const cols = (await db.prepare(`SELECT name FROM pragma_table_info('${t}')`).all()).results.map(x => x.name);
+      if (mode === 'replace') stm.push(db.prepare(t === 'bp_settings' ? "DELETE FROM bp_settings WHERE substr(k,1,4)<>'sec_' AND k<>'last_backup'" : `DELETE FROM ${t}`));
+      for (const r of list) {
+        if (!r || typeof r !== 'object') continue;
+        if (t === 'bp_settings' && (/^sec_/.test(r.k) || r.k === 'last_backup')) continue;
+        const ks = Object.keys(r).filter(k => cols.includes(k)); if (!ks.length) continue;
+        stm.push(db.prepare(`INSERT OR ${mode === 'replace' ? 'REPLACE' : 'IGNORE'} INTO ${t}(${ks.join(',')}) VALUES(${ks.map(() => '?').join(',')})`).bind(...ks.map(k => r[k] !== null && typeof r[k] === 'object' ? JSON.stringify(r[k]) : r[k])));
+        rows++; per[t] = (per[t] || 0) + 1;
+      }
+    }
+    if (!rows) throw err(400, 'La copia no tiene datos para restaurar');
+    if (stm.length > 6000) throw err(413, 'La copia es demasiado grande para cargarla de una vez. Probá con "Recuperar lo que falta".');
+    // Los triggers que mandan turnos a Santi se sacan mientras se carga (y se vuelven a crear en la misma operación): restaurar no reenvía nada.
+    await db.batch([...trg.map(x => db.prepare(`DROP TRIGGER IF EXISTS ${x.name}`)), ...stm, ...trg.map(x => db.prepare(x.sql))]);
+    await audit(db, me, 'Restauró una copia de seguridad', `${mode === 'replace' ? 'Reemplazo total' : 'Recuperó lo que faltaba'} · ${rows} filas · copia del ${String(d.fecha || '').slice(0, 10)}`);
+    return J(200, { ok: true, rows, per });
+  }
+  if (p === '/api/admin/backup') { // copia de seguridad completa para guardar fuera de Cloudflare (sin PINs ni sesiones)
+    const full = u.searchParams.get('full') === '1', skip = ['bp_sessions', 'bp_limits', 'bp_subs', ...(full ? [] : ['bp_images'])];
+    const tables = (await db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND substr(name,1,3)='bp_' ORDER BY name").all()).results.map(x => x.name).filter(t => !skip.includes(t)), out = { app: 'fausto-furlano-barbershop', fecha: new Date().toISOString(), completa: full, tablas: {} };
+    for (const t of tables) { let rows = (await db.prepare(`SELECT * FROM ${t}`).all()).results; if (t === 'bp_staff') rows = rows.map(r => ({ ...r, pin_hash: '(reiniciar)' })); if (t === 'bp_settings') rows = rows.filter(r => !/^sec_/.test(r.k)); out.tablas[t] = rows; }
+    await db.prepare("INSERT OR REPLACE INTO bp_settings(k,v) VALUES('last_backup',?)").bind(out.fecha).run();
+    await audit(db, me, 'Descargó una copia de seguridad', `${tables.length} tablas`);
+    return new Response(JSON.stringify(out), { headers: { 'content-type': 'application/json; charset=utf-8', 'content-disposition': `attachment; filename="copia-barberia-${n.date}.json"`, 'cache-control': 'no-store' } });
+  }
   if (p === '/api/admin/client/appts') { // historial de turnos de un cliente: día, hora, servicio, quién cortó y estado
     const cid = String(u.searchParams.get('id') || '');
     if (!(await db.prepare('SELECT id FROM bp_clients WHERE id=?').bind(cid).first())) throw err(404, 'Cliente no encontrado');
     const rows = (await db.prepare("SELECT a.id,a.kind,a.date,a.time,a.service_name,a.status,a.amount,a.price,a.prod_total,a.ext_src,a.staff_id,s.name sname FROM bp_appts a LEFT JOIN bp_staff s ON s.id=a.staff_id WHERE a.client_id=? AND a.kind IN('turno','fila') ORDER BY a.date DESC,a.time DESC,a.created_at DESC LIMIT 200").bind(cid).all()).results;
-    return J(200, { items: rows.map(r => ({ id: r.id, kind: r.kind, date: r.date, time: r.time, service: r.service_name, status: r.status, staff: r.sname || '', amount: (r.status === 'done' ? (r.amount || 0) + (r.prod_total || 0) : r.price || 0), locked: r.ext_src === SYNC_SRC && r.status !== 'cancelled' })) });
+    return J(200, { items: rows.map(r => ({ id: r.id, kind: r.kind, date: r.date, time: r.time, service: r.service_name, status: r.status, staff: r.sname || '', amount: (r.status === 'done' ? (r.amount || 0) + (r.prod_total || 0) : r.price || 0), linked: r.ext_src === SYNC_SRC, locked: r.ext_src === SYNC_SRC && !['pending', 'cancelled'].includes(r.status) })) });
   }
   if (p === '/api/admin/client/dedupe' && req.method === 'POST') { // deja un solo turno por (barbero, día, hora): conserva el hecho, o el más antiguo
     const rows = (await db.prepare("SELECT a.*,c.name cname FROM bp_appts a JOIN bp_clients c ON c.id=a.client_id WHERE a.client_id=? AND a.kind='turno' AND a.status IN('pending','done') AND a.ext_src IS NULL ORDER BY (a.status='done') DESC,a.created_at ASC,a.id ASC").bind(String(B.id || '')).all()).results, seen = new Set();
@@ -1078,10 +1157,15 @@ async function route(req, db, u, p, env, ctx) {
   if (p === '/api/appt/del' && req.method === 'POST') { // solo el dueño: borra un turno de la ficha del cliente (p. ej. uno cargado dos veces), en cualquier estado
     const a = await db.prepare("SELECT a.*,c.name cname FROM bp_appts a JOIN bp_clients c ON c.id=a.client_id WHERE a.id=? AND a.kind IN('turno','fila')").bind(String(B.id || '')).first();
     if (!a) throw err(404, 'Ese turno no existe (puede que ya lo hayan borrado)');
-    if (a.ext_src === SYNC_SRC && a.status !== 'cancelled') throw err(409, 'Este turno está vinculado con el sistema de Santi: solo se puede borrar si está cancelado. Cancelalo primero.');
+    const linked = a.ext_src === SYNC_SRC;
+    if (linked && !['pending', 'cancelled'].includes(a.status)) throw err(409, 'Este turno ya figura como ' + (a.status === 'done' ? 'hecho' : 'cerrado') + ' en el sistema de Santi y no se puede deshacer desde acá. Borralo también en su sistema si hace falta.');
     if (await db.prepare('SELECT id FROM bp_fees WHERE appt_id=?').bind(a.id).first()) throw err(409, 'Tiene una cancelación con cobro asociado, no se puede borrar.');
+    if (linked) { // se deja la marca ANTES de avisar a Santi, así su aviso de vuelta no recrea el turno; si Santi no responde, se saca y no se borra nada
+      await db.prepare('INSERT OR REPLACE INTO bp_tomb(ext_id,t) VALUES(?,?)').bind(a.ext_id, Date.now()).run();
+      if (a.status === 'pending') { try { await guardSanti(env, a, 'cancel', { late: 0 }); } catch (e) { await db.prepare('DELETE FROM bp_tomb WHERE ext_id=?').bind(a.ext_id).run(); throw e; } }
+    }
     await delApptRow(db, me, a);
-    return J(200, { ok: true });
+    return J(200, { ok: true, santi: linked });
   }
   if (p === '/api/admin/expense' && req.method === 'POST') {
     const c = String(B.concept || '').trim().slice(0, 80), a = Math.round(+B.amount), d = B.date ? String(B.date) : n.date, pay = B.cash ? 'efectivo' : null;
@@ -1377,6 +1461,7 @@ export default {
       await init(env.DB); const n = now();
       await runRecurring(env.DB, n);
       await env.DB.prepare("DELETE FROM bp_audit WHERE at<datetime('now','-400 day')").run();
+      await env.DB.prepare('DELETE FROM bp_tomb WHERE t<?').bind(Date.now() - 120 * 864e5).run().catch(() => {});
       await env.DB.prepare('DELETE FROM bp_limits WHERE t<?').bind(Date.now() - 86400000).run();
       await closeOld(env.DB);
       await env.DB.prepare("DELETE FROM bp_images WHERE created_at<datetime('now','-1 day') AND id NOT IN (SELECT photo FROM bp_services WHERE photo IS NOT NULL) AND id NOT IN (SELECT photo FROM bp_products WHERE photo IS NOT NULL) AND id NOT IN (SELECT v FROM bp_settings WHERE k='logo')").run();
