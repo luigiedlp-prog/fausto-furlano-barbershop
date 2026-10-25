@@ -50,7 +50,7 @@ function vDia(){
   const t=M.day.filter(a=>a.kind==='turno'&&a.status==='pending').sort((a,b)=>a.time.localeCompare(b.time)),f=M.day.filter(a=>a.kind==='fila'&&a.status==='pending'),c=M.day.filter(a=>a.status!=='pending'&&a.kind!=='venta'),n=t[0]||f[0],pv=M.day.filter(a=>a.status==='done'&&(a.items||[]).length).sort((a,b)=>String(b.created_at).localeCompare(String(a.created_at))),pu=pv.reduce((t,a)=>t+a.items.reduce((s,i)=>s+i.qty,0),0),pt=pv.reduce((t,a)=>t+a.items.reduce((s,i)=>s+i.qty*i.price,0),0);
   const empty=x=>`<div class="group"><div class="empty"><b>${x}</b></div></div>`;
   const unr=M.unrec&&M.unrec.n?`<div class="group pad" style="margin-bottom:12px"><b>${M.unrec.n} turno${M.unrec.n===1?'':'s'} sin registrar</b><p class="hint">Quedaron pendientes de días anteriores. Marcá si se hicieron, si faltó el cliente o si se cancelaron.</p><button class="btn" onclick="agDate='${M.unrec.d}';AG=null;go('ag')">Ver el último</button></div>`:'';
-  return `${unr}<h1 class="title">Mi día</h1>${PUSH.card('banner')}
+  return `${unr}${maintBanners()}<h1 class="title">Mi día</h1>${PUSH.card('banner')}
   <section class="today"><div class="d">${longDate(M.today)}</div><div class="m"><div><b>${t.length}</b><span>turnos</span></div><div><b>${f.length}</b><span>en fila</span></div><div><b>${M.earn.today.n}</b><span>hechos</span></div></div></section>
   ${n?`<div class="next now" style="margin-top:14px"><span class="t">${n.kind==='turno'?esc(n.time):'Fila'}</span><div class="mn"><span class="lb">${n.kind==='turno'?'Próximo turno':'Siguiente en la fila'}</span><b>${esc(n.cname)}</b><small>${esc(n.service_name)} · ${fmt(n.price)}</small></div><button class="qd" onclick="doneSheet('${n.id}')" aria-label="Hecho">${ico('check')}</button></div>`:''}
   ${sec('Turnos',t.length+' pendientes',t.length?t.map(ev).join(''):empty('Sin turnos pendientes'))}
@@ -119,11 +119,12 @@ function cliSheet(id){
   <button class="btn danger" style="width:100%;margin-top:16px" onclick="delCli('${c.id}')">Borrar contacto</button>`);
   cliApps(id);
 }
+let CTI={};
 const ST_TXT={pending:'Pendiente',done:'Hecho',no_show:'No asistió',cancelled:'Cancelado',unrecorded:'Sin registrar'};
 async function cliApps(cid){
   try{
     const r=await api('/admin/client/appts?id='+encodeURIComponent(cid)),el=$('ct');if(!el)return;
-    const cnt={};r.items.forEach(x=>{if(x.kind==='turno'&&(x.status==='pending'||x.status==='done')){const k=x.date+'|'+x.time+'|'+x.staff;cnt[k]=(cnt[k]||0)+1}});
+    CTI={};r.items.forEach(x=>{CTI[x.id]=x});const cnt={};r.items.forEach(x=>{if(x.kind==='turno'&&(x.status==='pending'||x.status==='done')){const k=x.date+'|'+x.time+'|'+x.staff;cnt[k]=(cnt[k]||0)+1}});
     const nd=Object.values(cnt).reduce((s,n)=>s+(n>1?n-1:0),0);
     el.innerHTML=(nd?`<div class="hrow"><span><b style="color:var(--bad)">⚠ ${nd} turno${nd>1?'s':''} repetido${nd>1?'s':''}</b><small>Deja uno solo por barbero, día y hora</small></span><button class="linkbtn" style="color:var(--bad)" onclick="dedupeCli('${cid}')">Borrar duplicados</button></div>`:'')+(r.items.length?r.items.map(x=>{const rep=x.kind==='turno'&&cnt[x.date+'|'+x.time+'|'+x.staff]>1;
       return `<div class="hrow"><span><b>${dm(x.date)}${x.time?' · '+esc(x.time):' · Fila'}</b><small>${esc(x.service)} · ${x.staff?'Cortó '+esc(x.staff):'Sin barbero asignado'} · ${ST_TXT[x.status]||esc(x.status)}${rep?' · <span style="color:var(--bad)">⚠ repetido</span>':''}</small></span>${x.locked?'':`<button class="linkbtn" style="color:var(--bad)" onclick="delAppt('${x.id}','${cid}')">Borrar</button>`}</div>`}).join(''):'<div class="empty"><b>Sin turnos</b></div>');
@@ -134,7 +135,8 @@ async function dedupeCli(cid){
   try{const r=await post('/admin/client/dedupe',{id:cid});AG=null;await load();draw();cliSheet(cid);toast(r.removed?r.removed+' duplicado'+(r.removed>1?'s':'')+' borrado'+(r.removed>1?'s':''):'No había duplicados')}catch(e){alertD(e.message)}
 }
 async function delAppt(id,cid){
-  if(!await confirmD('¿Borrar este turno? Si estaba hecho, sale de la caja y de las visitas del cliente; los productos vuelven al stock. No se puede deshacer.','Borrar',true))return;
+  const x=CTI[id]||{},det=x.date?`${dm(x.date)}${x.time?' '+x.time:' (fila)'} · ${x.service||''} · ${x.staff?'Cortó '+x.staff:'sin barbero'} · ${ST_TXT[x.status]||x.status}`:'';
+  if(!await confirmD(`¿Borrar este turno?${det?'\n'+det:''}${x.linked&&x.status==='pending'?' Se cancela también en el sistema de Santi.':''} Si estaba hecho, sale de la caja y de las visitas del cliente; los productos vuelven al stock. No se puede deshacer.`,'Borrar',true))return;
   try{await post('/appt/del',{id});AG=null;await load();draw();cliSheet(cid);toast('Turno borrado')}catch(e){alertD(e.message)}
 }
 
@@ -153,7 +155,7 @@ function vFin(){
   ${Object.keys(m.byCat||{}).length?sec('Gastos por categoría',lab,`<div class="group pad">${Object.entries(m.byCat).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`<div class="hrow"><span>${esc(k)}<small>${m.expenses?Math.round(v*100/m.expenses):0}%</small></span><b>${fmt(v)}</b></div>`).join('')}</div>`):''}
   ${rows.length?sec('Gastos · '+lab.toLowerCase(),'Tocá uno para editar o borrar',`<div class="group pad">${rows.map(e=>`<div class="hrow" style="cursor:pointer" onclick="expSheet('${e.id}')"><span>${esc(e.concept)}<small>${esc(e.category||'Otros')} · ${esc(e.date)}${e.pay==='efectivo'?' · de la caja':''}</small></span><b>${fmt(e.amount)}</b></div>`).join('')}</div>`):''}
   ${sec('Gastos fijos','Se cargan solos cada mes',`<div class="group pad">${A.recurring.length?A.recurring.map(r=>`<div class="hrow" style="cursor:pointer" onclick="recSheet('${r.id}')"><span>${esc(r.concept)}<small>Día ${r.day} de cada mes · ${esc(r.category||'Otros')}${r.pay==='efectivo'?' · de la caja':''}${r.active?'':' · pausado'}</small></span><b>${fmt(r.amount)}</b></div>`).join(''):'<p class="hint" style="margin:0">Cargá acá el alquiler u otros gastos que se repiten y aparecen solos cada mes.</p>'}<button class="btn" style="width:100%;margin-top:10px" onclick="recSheet()">+ Agregar gasto fijo</button></div>`)}
-  ${sec('Más','',`<div class="group"><button class="lrow" onclick="histSheet()"><span class="main"><b>Meses anteriores</b><small>Ingresos, gastos y ganancia de los últimos 12 meses</small></span><span class="chev">${ico('chev')}</span></button><button class="lrow" onclick="exportCsv('${m.from}','${m.to}')"><span class="main"><b>Exportar a Excel (CSV)</b><small>${lab}: ${dm(m.from)} al ${dm(m.to)}</small></span><span class="chev">${ico('chev')}</span></button><button class="lrow" onclick="auditSheet()"><span class="main"><b>Registro de cambios</b><small>Quién cargó, borró o modificó cada cosa</small></span><span class="chev">${ico('chev')}</span></button></div>`)}
+  ${sec('Más','',`<div class="group"><button class="lrow" onclick="histSheet()"><span class="main"><b>Meses anteriores</b><small>Ingresos, gastos y ganancia de los últimos 12 meses</small></span><span class="chev">${ico('chev')}</span></button><button class="lrow" onclick="exportCsv('${m.from}','${m.to}')"><span class="main"><b>Exportar a Excel (CSV)</b><small>${lab}: ${dm(m.from)} al ${dm(m.to)}</small></span><span class="chev">${ico('chev')}</span></button><button class="lrow" onclick="auditSheet()"><span class="main"><b>Registro de cambios</b><small>Quién cargó, borró o modificó cada cosa</small></span><span class="chev">${ico('chev')}</span></button><button class="lrow" onclick="backupNow()"><span class="main"><b>Copia de seguridad</b><small>${A.maint&&A.maint.backupDays!==null?'Última copia: hace '+A.maint.backupDays+' día'+(A.maint.backupDays===1?'':'s'):'Todavía no descargaste ninguna'} · bajar todos los datos al celular</small></span><span class="chev">${ico('chev')}</span></button><button class="lrow" onclick="restoreSheet()"><span class="main"><b>Restaurar copia</b><small>Cargar un archivo de copia de seguridad</small></span><span class="chev">${ico('chev')}</span></button></div>`)}
 `;
 }
 const svNames=p=>p.service_id?p.service_id.split(',').map(i=>(M.services.find(s=>s.id===i)||{}).name).filter(Boolean).join(' · '):'—';
@@ -457,3 +459,53 @@ function pushRefresh(){if(!M)return;api('/notifs?count=1').then(r=>badge(r.unrea
   load().then(()=>{if(tab==='ag'){AG=null;return loadAg().then(draw)}draw()}).catch(()=>{})}
 if('serviceWorker'in navigator)navigator.serviceWorker.addEventListener('message',e=>{if(e.data&&e.data.type==='push')pushRefresh()});
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')pushRefresh()});
+
+/* ---- Avisos del dueño: envíos fallidos a Santi, WhatsApp repetidos y copia de seguridad ---- */
+function maintBanners(){
+  const m=A&&A.maint;if(!m)return '';let h='';
+  if(m.sync&&m.sync.length)h+=`<div class="group pad" style="margin-bottom:12px"><b>⚠ ${m.sync.length} turno${m.sync.length>1?'s':''} no ${m.sync.length>1?'llegaron':'llegó'} a Santi</b>${m.sync.map(s=>`<p class="hint" style="margin:8px 0 6px">${esc(s.cname||'—')} · ${s.date?dm(s.date)+' '+esc(s.time||''):''} · ${esc(s.service||'')}<br>${esc(s.err||'Error')}</p><div style="display:flex;gap:8px">${s.retry?`<button class="btn primary" onclick="syncRetry('${s.id}')">Reintentar</button>`:''}<button class="btn" onclick="syncDiscard('${s.id}')">Descartar</button></div>`).join('')}</div>`;
+  if(m.dups)h+=`<div class="group pad" style="margin-bottom:12px"><b>${m.dups} cliente${m.dups>1?'s':''} con el WhatsApp repetido</b><p class="hint">Es el mismo número cargado distinto (por ejemplo, con y sin el 9). Unificá las fichas para que no se dupliquen los turnos.</p><button class="btn" onclick="dupSheet()">Revisar</button></div>`;
+  if(m.backupDays===null||m.backupDays>=7)h+=`<div class="group pad" style="margin-bottom:12px"><b>${m.backupDays===null?'Todavía no descargaste una copia de seguridad':'Hace '+m.backupDays+' días que no descargás una copia de seguridad'}</b><p class="hint">Se baja un archivo con todos los datos al celular. Guardalo en un lugar seguro.</p><button class="btn" onclick="backupNow()">Descargar copia</button></div>`;
+  return h;
+}
+async function syncRetry(id){try{await post('/admin/sync/retry',{id});await load();draw();toast('Reenviando a Santi…')}catch(e){alertD(e.message)}}
+async function syncDiscard(id){
+  if(!await confirmD('¿Descartar este aviso? El turno queda solo en la barbería y no se vuelve a enviar a Santi.','Descartar',true))return;
+  try{await post('/admin/sync/discard',{id});await load();draw()}catch(e){alertD(e.message)}
+}
+function backupNow(){location.href='/api/admin/backup';toast('Descargando la copia…');setTimeout(async()=>{try{await load();draw()}catch(e){}},4000)}
+let DUPG=[];
+async function dupSheet(){
+  try{const r=await api('/admin/clients/dups');DUPG=r.groups;
+    sheet(`<h2>WhatsApp repetidos</h2><p class="sub">Unificar junta los turnos, visitas y datos en una sola ficha (la primera de cada grupo).</p>${DUPG.length?DUPG.map((gp,i)=>`<div class="group" style="margin-bottom:12px">${gp.items.map((c,j)=>`<div class="hrow"><span><b>${esc(c.name)}${j===0?' · se queda':''}</b><small>${esc(c.whatsapp)} · ${c.visits} visita${c.visits===1?'':'s'}</small></span></div>`).join('')}<button class="btn primary" style="width:100%" onclick="mergeGroup(${i})">Unificar en ${esc(gp.items[0].name)}</button></div>`).join(''):'<div class="group"><div class="empty"><b>No hay repetidos</b></div></div>'}`)}
+  catch(e){alertD(e.message)}
+}
+async function mergeGroup(i){
+  const gp=DUPG[i];if(!gp)return;const keep=gp.items[0],rest=gp.items.slice(1);
+  if(!await confirmD(`¿Unificar ${rest.map(c=>c.name+' ('+c.whatsapp+')').join(', ')} en ${keep.name} (${keep.whatsapp})? No se puede deshacer.`,'Unificar',true))return;
+  try{for(const c of rest)await post('/admin/client/merge',{keep:keep.id,drop:c.id});await load();draw();toast('Fichas unificadas');dupSheet()}catch(e){alertD(e.message)}
+}
+
+/* ---- Restaurar una copia de seguridad ---- */
+let RST=null;
+function restoreSheet(){sheet(`<h2>Restaurar copia</h2><p class="sub">Elegí el archivo .json que bajaste con "Copia de seguridad". No se toca el equipo, los PINs ni el registro de cambios.</p><input type="file" accept=".json,application/json" onchange="restorePick(this.files[0])" style="width:100%;margin-top:8px">`)}
+async function restorePick(f){
+  if(!f)return;
+  try{const d=JSON.parse(await f.text());if(d.app!=='fausto-furlano-barbershop'||!d.tablas)throw 0;RST=d;
+    const n=t=>(d.tablas[t]||[]).length,fe=d.fecha?new Date(d.fecha).toLocaleString('es-AR',{timeZone:'America/Argentina/Buenos_Aires',day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}):'—';
+    sheet(`<h2>Copia del ${fe}</h2><p class="sub">${n('bp_clients')} clientes · ${n('bp_appts')} turnos · ${n('bp_products')} productos</p>
+      <button class="btn primary" style="width:100%;margin-top:8px" onclick="restoreGo('merge')">Recuperar lo que falta</button><p class="hint">Vuelve a cargar lo que se borró, sin tocar lo que hoy existe. Es lo más seguro.</p>
+      <button class="btn danger" style="width:100%;margin-top:12px" onclick="restoreGo('replace')">Reemplazar todo</button><p class="hint">Deja los datos exactamente como estaban en la copia: se pierde lo cargado después.</p>`)
+  }catch(e){alertD('Ese archivo no es una copia válida de esta app.')}
+}
+async function restoreGo(mode){
+  if(!RST)return;
+  if(mode==='replace'){const t=await dlg({msg:'Se borra lo cargado después de la copia. Escribí RESTAURAR para confirmar.',ok:'Restaurar',cancel:'Cancelar',input:true,danger:true});if(String(t||'').trim().toUpperCase()!=='RESTAURAR')return}
+  else if(!await confirmD('Se vuelve a cargar lo que falta de la copia. No se pisa nada de lo que hoy existe.','Restaurar'))return;
+  try{
+    toast('Guardando una copia de lo actual…');
+    const r0=await fetch('/api/admin/backup');if(!r0.ok)throw new Error('No se pudo guardar la copia de lo actual, no se restauró nada.');
+    const a=document.createElement('a');a.href=URL.createObjectURL(await r0.blob());a.download='copia-antes-de-restaurar.json';document.body.appendChild(a);a.click();a.remove();
+    const r=await post('/admin/restore',{mode,data:RST});RST=null;closeSheet();await load();draw();alertD(`Listo: se cargaron ${r.rows} registros.`)
+  }catch(e){alertD(e.message)}
+}
