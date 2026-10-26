@@ -1162,7 +1162,7 @@ async function route(req, db, u, p, env, ctx) {
     if (await db.prepare('SELECT id FROM bp_fees WHERE appt_id=?').bind(a.id).first()) throw err(409, 'Tiene una cancelación con cobro asociado, no se puede borrar.');
     if (linked) { // se deja la marca ANTES de avisar a Santi, así su aviso de vuelta no recrea el turno; si Santi no responde, se saca y no se borra nada
       await db.prepare('INSERT OR REPLACE INTO bp_tomb(ext_id,t) VALUES(?,?)').bind(a.ext_id, Date.now()).run();
-      if (a.status === 'pending') { try { await guardSanti(env, a, 'cancel', { late: 0 }); } catch (e) { await db.prepare('DELETE FROM bp_tomb WHERE ext_id=?').bind(a.ext_id).run(); throw e; } }
+      if (a.status === 'pending') { try { await guardSanti(env, a, 'remove'); } catch (e) { await db.prepare('DELETE FROM bp_tomb WHERE ext_id=?').bind(a.ext_id).run(); throw e; } }
     }
     await delApptRow(db, me, a);
     return J(200, { ok: true, santi: linked });

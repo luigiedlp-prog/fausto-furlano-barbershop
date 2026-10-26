@@ -59,7 +59,7 @@ Ajustes → Más → **Restaurar copia** (solo dueño): se elige el archivo .jso
 No se tocan el equipo ni los PINs, la cola de Santi, el registro de cambios ni los datos de recuperación del PIN. Restaurar no reenvía turnos a Santi. Todo se carga en una sola operación: si falla, no queda nada a medias.
 
 ## Borrar turnos vinculados con Santi
-Pendientes: se cancelan también en el sistema de Santi y se borran acá (si Santi no responde, no se borra nada). Cancelados: se borran acá. Hechos o cerrados: no se pueden borrar desde acá. Al borrar queda una marca (`bp_tomb`, 120 días) para que el aviso de vuelta de Santi no recree el turno.
+Pendientes: se borran también en el sistema de Santi (sin contarlas como cancelación ni avisarle al cliente) y se borran acá (si Santi no responde, no se borra nada). Cancelados: se borran acá. Hechos o cerrados: no se pueden borrar desde acá. Al borrar queda una marca (`bp_tomb`, 120 días) para que el aviso de vuelta de Santi no recree el turno.
 
 ## Límite de intentos
 Desactivado (`LIMITS = false` en `worker.js`): no hay bloqueo por PIN incorrecto ni tope de reservas por conexión. Para reactivarlo, cambiar a `true`.
