@@ -1,5 +1,5 @@
 /* Barbería Pergamino · Gestión (barberos y dueños). Estilos en /app.css y /gestion/gestion.css */
-let M=null,A=null,fper='month',expBusy=false,tab='dia',q='',fl='all',AG=null,agDate=null,agStaff='all',AFF=[];
+let M=null,A=null,fper='month',expBusy=false,tab='dia',q='',fl='all',AG=null,agDate=null,agToday=null,agStaff='all',AFF=[];
 const AR='America/Argentina/Buenos_Aires';
 const hh=s=>s?new Date(s.replace(' ','T')+'Z').toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit',hour12:false,timeZone:AR}):'';
 const dm=d=>d?d.slice(8)+'/'+d.slice(5,7):'—';
@@ -254,7 +254,7 @@ async function delExp(id){if(!await confirmD('¿Borrar este gasto? No se puede d
 
 /* ---- Agenda: turnos manuales, mover/editar y bloqueos ---- */
 const addDay=(d,n)=>{const x=new Date(d+'T12:00:00Z');x.setUTCDate(x.getUTCDate()+n);return x.toISOString().slice(0,10)};
-async function loadAg(){AG=await api('/agenda?date='+(agDate||M.today)+(M.me.role==='owner'?'&staff='+agStaff:''));agDate=AG.date}
+async function loadAg(){if(agDate&&agToday&&agToday!==M.today&&agDate===agToday)agDate=M.today;agToday=M.today;AG=await api('/agenda?date='+(agDate||M.today)+(M.me.role==='owner'?'&staff='+agStaff:''));agDate=AG.date}
 function agGo(n){agDate=addDay(AG.date,n);AG=null;draw()}
 function agSet(d){if(!d)return;agDate=d;AG=null;draw()}
 const canDelBlk=b=>M.me.role==='owner'||b.staff_id===M.me.id;
@@ -282,7 +282,7 @@ const stOpts=sel=>A.team.filter(s=>s.active!==false).map(s=>`<option value="${s.
 function newSheet(){const owner=M.me.role==='owner';
   sheet(`<h2>Cargar un turno</h2>${owner?`<div class="field"><label>Barbero</label><select id="nbar">${stOpts(agStaff!=='all'?agStaff:M.me.id)}</select></div>`:''}
   <div class="field"><label>Servicio</label><select id="ns" onchange="exCalc()">${svOpts()}</select></div>${exBoxes([])}${prodBoxes({})}
-  <div class="field"><label>Día</label><input id="nd" type="date" value="${AG?AG.date:M.today}"></div><div class="field"><label>Hora</label><input id="nh" type="time"></div>
+  <div class="field"><label>Día</label><input id="nd" type="date" value="${AG&&AG.date>=M.today?AG.date:M.today}"></div><div class="field"><label>Hora</label><input id="nh" type="time"></div>
   <div class="field"><label>Nombre del cliente</label><input id="nn" autocomplete="off"></div><div class="field"><label>WhatsApp</label><div class="pair"><input class="prefix" value="+54 9" disabled aria-label="Prefijo"><input id="nw" inputmode="tel" placeholder="2477 201614"></div></div>
   <div class="field"><label>Precio</label><input id="np" type="number" inputmode="numeric" value="${(M.services.find(s=>!s.addon)||{}).price||''}"></div><p class="err" id="ne"></p><button class="btn primary" onclick="saveNew()">Guardar turno</button>`)}
 let saveBusy=false;/* evita que un doble toque (o doble clic) cargue el turno dos veces */
@@ -451,6 +451,15 @@ async function doRecover(){try{await post('/recover',{answer:$('ra').value,pin:$
 
 setInterval(()=>{if(M&&tab==='dia'&&!$('overlay').classList.contains('show')&&!document.querySelector('.dlg')&&document.visibilityState==='visible'){const b=new Set(M.day.map(a=>a.id));load().then(()=>{if(M.day.some(a=>!b.has(a.id))){toast('Nuevo turno o cliente en la fila');try{navigator.vibrate&&navigator.vibrate(200)}catch(e){}}draw()}).catch(()=>{})}},15000);
 boot();
+
+/* Cambio de día con la app abierta: al pasar la medianoche (hora de Buenos Aires) la página se recarga sola para que agenda, caja y formularios arranquen en el día nuevo.
+   Si hay una hoja o un diálogo abierto espera a que se cierre, así no se pierde lo que se está escribiendo. */
+const arDay=()=>new Date().toLocaleDateString('en-CA',{timeZone:AR});
+let seenDay=arDay();
+function dayCheck(){if(arDay()===seenDay)return;if(!M)return;if($('overlay').classList.contains('show')||document.querySelector('.dlg'))return;location.reload()}
+setInterval(dayCheck,30000);
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')dayCheck()});
+window.addEventListener('pageshow',dayCheck);
 
 /* ---- Avisos push: al llegar uno (o volver a la app) se actualiza la campana y, si no hay nada abierto, la pantalla ---- */
 PUSH.onchange=()=>{if(M&&!$('overlay').classList.contains('show')&&['dia','mi','cfg'].includes(tab))draw()};
