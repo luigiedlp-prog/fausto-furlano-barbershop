@@ -990,10 +990,11 @@ async function route(req, db, u, p, env, ctx) {
     // Desde el panel se carga libre: cualquier día y hora, sin chequear choques, bloqueos ni horario de atención (la reserva online sigue con sus reglas).
     if (!isDate(B.date) || !isTime(B.time)) throw err(400, 'Elegí una fecha y una hora válidas');
     const dup = await dupAppt(db, B.whatsapp, "a.kind='turno' AND a.staff_id=? AND a.date=? AND a.time=?", [sf.id, B.date, B.time], 0, "'pending','done'");
-    if (dup) return J(200, { ok: true, id: dup.id, dup: true });
+    if (dup) { await audit(db, me, 'Turno repetido (no se duplicó)', `${String(B.name || '').slice(0, 40)} · ${fd(B.date)} ${B.time} · ${sf.name}`).catch(() => {}); return J(200, { ok: true, id: dup.id, dup: true }); }
     const cid = await client(db, B.name, B.whatsapp, null), id = uid('a'), pr = B.price !== '' && B.price != null && Number.isFinite(+B.price) && +B.price >= 0 ? Math.round(+B.price) : s.price;
     const pl = await planItems(db, B.products, []);
     try { await db.batch([db.prepare("INSERT INTO bp_appts(id,client_id,staff_id,service_id,service_name,price,duration,date,time,kind,extras) VALUES(?,?,?,?,?,?,?,?,?,'turno',?)").bind(id, cid, sf.id, s.id, s.name, pr, s.duration, B.date, B.time, exJson(s)), ...itemStmts(db, id, pl.rows)]); } catch (e) { await giveBack(db, pl.rows); throw e; }
+    await audit(db, me, 'Turno cargado', `${String(B.name || '').slice(0, 40)} · ${fd(B.date)} ${B.time} · ${s.name} · ${sf.name}${B.date < n.date ? ' · ⚠ fecha pasada' : ''}`).catch(() => {});
     lowNotify(ctx, env, db, pl.low);
     if (sf.id !== me.id) ctx.waitUntil(notifyStaff(env, db, sf.id, `Te cargaron un turno: ${String(B.name || '').slice(0, 30)} · ${fd(B.date)} ${B.time}`));
     return J(200, { ok: true, id });
