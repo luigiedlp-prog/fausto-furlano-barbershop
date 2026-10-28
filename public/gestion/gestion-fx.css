@@ -1,0 +1,67 @@
+/* Poste de barbero bajo el encabezado */
+.fx-pole{position:relative;height:5px;margin:3px 4px 4px;border-radius:5px;overflow:hidden;background:#17120a;box-shadow:0 0 18px var(--glow-soft),inset 0 0 0 1px rgba(255,255,255,.07);-webkit-mask:linear-gradient(90deg,transparent,#000 14%,#000 86%,transparent);mask:linear-gradient(90deg,transparent,#000 14%,#000 86%,transparent)}
+.fx-pole i{position:absolute;left:-28px;right:0;top:0;bottom:0;background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='5'%3E%3Cpolygon points='0,5 7,5 14,0 7,0' fill='%23d4af5a'/%3E%3Cpolygon points='14,5 21,5 28,0 21,0' fill='%23f4efe4'/%3E%3C/svg%3E") repeat-x 0 0/28px 5px;animation:fxPole 1s linear infinite;will-change:transform}
+@keyframes fxPole{to{transform:translateX(28px)}}
+
+/* Logo con aro de luz girando */
+.mini{position:relative;overflow:visible!important}
+.mini::after{content:"";position:absolute;inset:-3px;border-radius:50%;background:conic-gradient(from 0deg,transparent 0 55%,var(--fx-g2) 85%,transparent);-webkit-mask:radial-gradient(farthest-side,transparent calc(100% - 2px),#000 calc(100% - 1px));mask:radial-gradient(farthest-side,transparent calc(100% - 2px),#000 calc(100% - 1px));animation:fxSpin 3.4s linear infinite;pointer-events:none}
+@keyframes fxSpin{to{transform:rotate(360deg)}}
+
+/* Tarjeta principal: brillo de espejo + respiración dorada */
+.today{position:relative;overflow:hidden;isolation:isolate}
+.today::before{content:"";position:absolute;inset:0;z-index:-1;border-radius:inherit;background:radial-gradient(80% 130% at 88% -30%,rgba(236,208,138,.26),transparent 62%);animation:fxBreath 5s ease-in-out infinite alternate}
+.today::after{content:"";position:absolute;top:-20%;bottom:-20%;left:0;width:42%;background:linear-gradient(100deg,transparent,rgba(255,238,180,.26) 50%,transparent);transform:translateX(-150%) skewX(-18deg);animation:fxSheen 6.5s var(--fx-e) 1.4s infinite;pointer-events:none}
+@keyframes fxBreath{from{opacity:.55}to{opacity:1}}
+@keyframes fxSheen{0%{transform:translateX(-150%) skewX(-18deg)}34%,100%{transform:translateX(360%) skewX(-18deg)}}
+
+/* Próximo turno: barrido de luz + anillo pulsante en el botón */
+.next.now{position:relative;overflow:hidden}
+.next.now::before{content:"";position:absolute;top:0;bottom:0;left:0;width:40%;background:linear-gradient(100deg,transparent,rgba(236,208,138,.2),transparent);transform:translateX(-130%);animation:fxSheen 4.2s ease-in-out 1s infinite;pointer-events:none}
+.next.now .qd{position:relative}
+.next.now .qd::after{content:"";position:absolute;inset:0;border-radius:50%;border:2px solid var(--fx-g2);animation:fxRing 2s ease-out infinite;pointer-events:none}
+@keyframes fxRing{from{transform:scale(1);opacity:.7}to{transform:scale(1.7);opacity:0}}
+
+/* Barra de pestañas */
+.tabbar::before{content:"";position:absolute;left:12%;right:12%;top:0;height:1px;background:linear-gradient(90deg,transparent,var(--fx-g2),transparent);opacity:.75}
+.tab.active svg{animation:fxPop .55s var(--fx-sp)}
+@keyframes fxPop{0%{transform:scale(.6) rotate(-14deg)}100%{transform:none}}
+
+/* Entrada en cascada al cambiar de pestaña */
+#app.fx-go>*{animation:fxRise .75s var(--fx-e) backwards}
+#app.fx-go>:nth-child(2){animation-delay:.07s}#app.fx-go>:nth-child(3){animation-delay:.14s}#app.fx-go>:nth-child(4){animation-delay:.21s}#app.fx-go>:nth-child(5){animation-delay:.28s}#app.fx-go>:nth-child(n+6){animation-delay:.34s}
+@keyframes fxRise{from{opacity:0;transform:translate3d(0,24px,0) scale(.97)}}
+#app.fx-go .appt{animation:fxSlide .6s var(--fx-e) backwards;animation-delay:calc(.2s + var(--i,0)*55ms)}
+#app.fx-go .stat,#app.fx-go .pcard{animation:fxPopIn .6s var(--fx-sp) backwards;animation-delay:calc(.2s + var(--i,0)*70ms)}
+@keyframes fxSlide{from{opacity:0;transform:translate3d(-18px,0,0)}}
+@keyframes fxPopIn{from{opacity:0;transform:scale(.88)}}
+#app.fx-go .bar1,#app.fx-go div[title]>div{transform-origin:bottom;animation:fxGrow .9s var(--fx-e) backwards;animation-delay:calc(.25s + var(--i,0)*45ms)}
+@keyframes fxGrow{from{transform:scaleY(0)}}
+
+.fx-sc .a{transform-origin:12px 12px;animation:fxSnipA .2s ease-in-out infinite alternate}.fx-sc .b{transform-origin:12px 12px;animation:fxSnipB .2s ease-in-out infinite alternate}
+@keyframes fxSnipA{to{transform:rotate(-13deg)}}@keyframes fxSnipB{to{transform:rotate(13deg)}}
+
+/* ===== 2) Login con entrada de lujo ===== */
+html[data-role=admin] .hero h1{animation:fxRise .9s var(--fx-e) .25s backwards;background:linear-gradient(100deg,var(--fx-g2) 20%,#fff 45%,var(--fx-g2) 70%) 0 0/250% 100%;-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:transparent}
+html:not(.fx-lite) html[data-role=admin] .hero h1{animation:fxRise .9s var(--fx-e) .25s backwards,fxText 5s ease-in-out 1.2s infinite}
+@keyframes fxText{0%,100%{background-position:100% 0}50%{background-position:0 0}}
+html[data-role=admin] .hero p{animation:fxRise .9s var(--fx-e) .4s backwards}
+#app:has(.hero) .group.pad{animation:fxRise .9s var(--fx-e) .55s backwards}
+.pin{text-shadow:0 0 12px var(--glow)}
+
+/* ===== 6) Botón de WhatsApp ===== */
+a.btn[href*="wa.me"]{display:flex!important;align-items:center;justify-content:center;gap:9px;min-height:46px;text-decoration:none!important;color:#3ddc7a!important;font-weight:600;background:linear-gradient(180deg,rgba(37,211,102,.3),rgba(37,211,102,.1))!important;border:1px solid rgba(37,211,102,.45)!important}
+a.btn[href*="wa.me"]::before{content:"";width:21px;height:21px;background:currentColor;-webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 20l1.3-4.2A8 8 0 1 1 8.4 18.8L4 20Z'/%3E%3Cpath d='M9 8.5c0 3.5 3 6.5 6.5 6.5l1-1.5-2-1-1 .8c-1-.4-2-1.4-2.4-2.4l.8-1-1-2Z'/%3E%3C/svg%3E") center/contain no-repeat;mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 20l1.3-4.2A8 8 0 1 1 8.4 18.8L4 20Z'/%3E%3Cpath d='M9 8.5c0 3.5 3 6.5 6.5 6.5l1-1.5-2-1-1 .8c-1-.4-2-1.4-2.4-2.4l.8-1-1-2Z'/%3E%3C/svg%3E") center/contain no-repeat}
+html[data-theme=light] a.btn[href*="wa.me"]{color:#157a3d!important}
+
+/* PC */
+@media(min-width:820px){
+  a.btn[href*="wa.me"]{white-space:normal;line-height:1.15;padding:6px 10px;font-size:14.5px;gap:7px}
+  a.btn[href*="wa.me"]::before{width:18px;height:18px}
+  html[data-theme] .tabbar{background:var(--gl)!important}
+  html[data-theme=dark] .tabbar{background:linear-gradient(180deg,rgba(255,255,255,.08),rgba(255,255,255,.03)),rgba(18,16,12,.6)!important}
+}
+
+/* Acceso a la página "Cargar turno" desde Mi día */
+a.btn.cg-link{display:flex!important;align-items:center;justify-content:center;gap:9px;margin:14px 0 2px;text-decoration:none}
+a.btn.cg-link svg.i{width:20px;height:20px;stroke-width:2.6}
