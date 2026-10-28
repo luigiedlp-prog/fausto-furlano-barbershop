@@ -1,7 +1,7 @@
 /* Cargar turno · página aparte (/cargar/) para cargar turnos o fila rápido, con estado al guardar.
    Usa la misma sesión de gestión (cookie del mismo sitio) y los mismos pedidos del panel: /boot, /appt/create, /queue/add, /appt/done y /appt/status. */
 (function(){
-  var CG=null,M=null,A=null,TZ='America/Argentina/Buenos_Aires';
+  var FOUND={},ftT=0,ftN=0,CG=null,M=null,A=null,TZ='America/Argentina/Buenos_Aires';
   var addDay=function(d,n){var x=new Date(d+'T12:00:00Z');x.setUTCDate(x.getUTCDate()+n);return x.toISOString().slice(0,10)};
   var load=async function(){var r=await api('/boot');A=r.admin||null;delete r.admin;M=r};
   var render=function(){$('app').innerHTML=window.vCargar()};
@@ -80,11 +80,17 @@
     qty:function(id,d){var p=(M.products||[]).find(function(x){return x.id===id}),mx=p.track?Math.min(10,p.stock):10;CG.prods[id]=Math.max(0,Math.min(mx,(CG.prods[id]||0)+d));$('cg-q-'+id).textContent=CG.prods[id];sync()},
     find:function(q){
       var box=$('cg-sug');if(!box)return;q=String(q||'').trim().toLowerCase();var d=q.replace(/\D/g,'');
-      if(!owner()||!A||!A.clients||q.length<2){box.innerHTML='';return}
-      var r=A.clients.filter(function(c){return c.name.toLowerCase().indexOf(q)>-1||(d.length>2&&String(c.whatsapp).indexOf(d)>-1)}).slice(0,4);
-      box.innerHTML=r.map(function(c){return '<button type="button" class="cg-chip cg-sg" onclick="CGX.fill(\''+c.id+'\')"><b>'+esc(c.name)+'</b><small>'+esc(displayWA(c.whatsapp))+'</small></button>'}).join('');
+      var show=function(r){r.forEach(function(c){FOUND[c.id]=c});box.innerHTML=r.map(function(c){return '<button type="button" class="cg-chip cg-sg" onclick="CGX.fill(\''+c.id+'\')"><b>'+esc(c.name)+'</b><small>'+esc(displayWA(c.whatsapp))+'</small></button>'}).join('')};
+      if(owner()){
+        if(!A||!A.clients||q.length<2){box.innerHTML='';return}
+        show(A.clients.filter(function(c){return c.name.toLowerCase().indexOf(q)>-1||(d.length>2&&String(c.whatsapp).indexOf(d)>-1)}).slice(0,4));return;
+      }
+      /* barbero: no recibe la lista completa; pregunta al servidor (solo nombre y WhatsApp, 4 resultados, desde 3 letras) */
+      clearTimeout(ftT);var my=++ftN;
+      if(q.length<3){box.innerHTML='';return}
+      ftT=setTimeout(async function(){try{var r=await post('/client/find',{q:q});if(my!==ftN)return;show((r&&r.clients)||[])}catch(e){}},220);
     },
-    fill:function(id){var c=A.clients.find(function(x){return x.id===id});if(!c)return;$('cg-n').value=c.name;$('cg-w').value=displayWA(c.whatsapp).replace(/^\+54 9 /,'');$('cg-sug').innerHTML=''},
+    fill:function(id){var c=(A&&A.clients?A.clients.find(function(x){return x.id===id}):null)||FOUND[id];if(!c)return;$('cg-n').value=c.name;$('cg-w').value=displayWA(c.whatsapp).replace(/^\+54 9 /,'');$('cg-sug').innerHTML=''},
     save:async function(go,force){
       if(CG.busy)return;var err=$('cg-err'),btn=$('cg-go');err.textContent='';
       CG.name=$('cg-n').value.trim();CG.wa=$('cg-w').value;CG.time=($('cg-t')||{}).value||CG.time;
@@ -108,7 +114,7 @@
           }catch(e2){warn='El turno quedó cargado como Pendiente, pero no se pudo marcar: '+e2.message}
         }
         await load();
-        CG.name='';CG.wa='';CG.prods={};CG.time=nowT();CG.price=total();
+        CG.name='';CG.wa='';CG.prods={};CG.time=nowT();CG.price=total();CG.status='pending';CG.pay='efectivo';
         render();if(fine()&&!go)setTimeout(function(){var n=$('cg-n');if(n)n.focus({preventScroll:true})},60);
         if(warn)alertD(warn);else{toast(msg);window.scrollTo({top:0,behavior:'smooth'})}
         if(go&&!warn)setTimeout(function(){location.href='/gestion/'},900);
@@ -137,30 +143,38 @@
   (async function(){try{await load();render()}catch(e){if(e.status===401)login();else $('app').innerHTML='<div class="group pad"><p class="err">'+esc(e.message)+'</p></div>'}})();
 })();
 
-/* Cargar turno · PC sin scroll: si el formulario no entra en la ventana, se achica todo solo (hasta 40%) para que entre.
-   Solo corre en PC (ventana ancha + mouse). En celular no hace nada. Se recalcula al cambiar el contenido o el tamaño. */
+/* Cargar turno · PC y tablet sin scroll: si el formulario no entra en la ventana, se achica todo solo (hasta 40%) para que entre.
+   Mide siempre con TODAS las secciones visibles (día/hora, barbero, medio de pago), así el tamaño no salta al cambiar de modo o de estado.
+   En celular (ventana angosta) no hace nada. En tablet, mientras escribís (teclado abierto) no recalcula. */
 (function(){
-  var mq=window.matchMedia('(min-width:900px) and (min-height:520px) and (hover:hover) and (pointer:fine)'),raf=0;
+  var mq=matchMedia('(min-width:900px) and (min-height:520px)'),fine=matchMedia('(hover:hover) and (pointer:fine)'),raf=0,mo=null,app=document.getElementById('app');
+  var OPT={childList:true,subtree:true,attributes:true,attributeFilter:['class','hidden','open']};
   var setZ=function(w,z){w.style.zoom=z;w.style.setProperty('--cgz',z)};
   var fits=function(){var b=document.body;return b.scrollHeight<=b.clientHeight+1};
+  var typing=function(){var a=document.activeElement;return !fine.matches&&!!a&&/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)};
   function fit(){
     raf=0;
     var w=document.querySelector('.wrap'),h=document.documentElement;
-    if(!w)return;
+    if(!w||typing())return;
     var on=mq.matches&&!!document.querySelector('.cg-cols');
     h.classList.toggle('cg-fit',on);
     if(!on){w.style.zoom='';w.style.removeProperty('--cgz');return}
-    setZ(w,1);
-    if(fits())return;
-    var lo=.4,hi=1;
-    for(var i=0;i<9;i++){var m=(lo+hi)/2;setZ(w,m);if(fits())lo=m;else hi=m}
-    setZ(w,lo);
+    if(mo)mo.disconnect();
+    var hid=[];
+    try{
+      ['cg-when','cg-stf','cg-pay'].forEach(function(id){var e=document.getElementById(id);if(e&&e.classList.contains('hidden')){e.classList.remove('hidden');hid.push(e)}});
+      setZ(w,1);
+      if(!fits()){var lo=.4,hi=1;for(var i=0;i<9;i++){var m=(lo+hi)/2;setZ(w,m);if(fits())lo=m;else hi=m}setZ(w,lo)}
+    }finally{
+      hid.forEach(function(e){e.classList.add('hidden')});
+      if(mo&&app)mo.observe(app,OPT);
+    }
   }
   var req=function(){if(!raf)raf=requestAnimationFrame(fit)};
-  var app=document.getElementById('app');
-  if(app)new MutationObserver(req).observe(app,{childList:true,subtree:true,attributes:true,attributeFilter:['class','hidden','open']});
-  window.addEventListener('resize',req);
+  if(app){mo=new MutationObserver(req);mo.observe(app,OPT)}
+  addEventListener('resize',req);
   if(mq.addEventListener)mq.addEventListener('change',req);
+  document.addEventListener('focusout',function(){setTimeout(req,250)});
   if(document.fonts&&document.fonts.ready)document.fonts.ready.then(req);
   req();
 })();
