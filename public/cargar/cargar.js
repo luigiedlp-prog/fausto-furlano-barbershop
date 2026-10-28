@@ -136,3 +136,38 @@
   X.login=async function(){try{await post('/login',{staff:$('ls').value,pin:$('lp').value});await load();CG=null;render()}catch(e){$('le').textContent=e.message}};
   (async function(){try{await load();render()}catch(e){if(e.status===401)login();else $('app').innerHTML='<div class="group pad"><p class="err">'+esc(e.message)+'</p></div>'}})();
 })();
+
+/* Cargar turno · PC sin scroll: si el formulario no entra en la ventana, se achica todo solo (hasta 40%) para que entre.
+   Solo corre en PC (ventana ancha + mouse). En celular no hace nada. Se recalcula al cambiar el contenido o el tamaño. */
+(function(){
+  var mq=window.matchMedia('(min-width:900px) and (min-height:520px) and (hover:hover) and (pointer:fine)'),raf=0;
+  var setZ=function(w,z){w.style.zoom=z;w.style.setProperty('--cgz',z)};
+  var fits=function(){var b=document.body;return b.scrollHeight<=b.clientHeight+1};
+  function fit(){
+    raf=0;
+    var w=document.querySelector('.wrap'),h=document.documentElement;
+    if(!w)return;
+    var on=mq.matches&&!!document.querySelector('.cg-cols');
+    h.classList.toggle('cg-fit',on);
+    if(!on){w.style.zoom='';w.style.removeProperty('--cgz');return}
+    setZ(w,1);
+    if(fits())return;
+    var lo=.4,hi=1;
+    for(var i=0;i<9;i++){var m=(lo+hi)/2;setZ(w,m);if(fits())lo=m;else hi=m}
+    setZ(w,lo);
+  }
+  var req=function(){if(!raf)raf=requestAnimationFrame(fit)};
+  var app=document.getElementById('app');
+  if(app)new MutationObserver(req).observe(app,{childList:true,subtree:true,attributes:true,attributeFilter:['class','hidden','open']});
+  window.addEventListener('resize',req);
+  if(mq.addEventListener)mq.addEventListener('change',req);
+  if(document.fonts&&document.fonts.ready)document.fonts.ready.then(req);
+  req();
+})();
+
+/* Cargar turno · PC: la lista de Productos flotante se cierra al tocar afuera o con Esc */
+(function(){
+  var close=function(){var d=document.querySelector('html.cg-fit .cg-det[open]');if(d)d.removeAttribute('open');return d};
+  document.addEventListener('click',function(e){var d=document.querySelector('html.cg-fit .cg-det[open]');if(d&&!d.contains(e.target))d.removeAttribute('open')});
+  document.addEventListener('keydown',function(e){if(e.key==='Escape')close()});
+})();
