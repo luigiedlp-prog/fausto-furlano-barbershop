@@ -1,10 +1,20 @@
-Cambios en /cargar (copiar sobre el repo, respetando las carpetas):
+Cambios (copiar sobre el repo respetando las carpetas):
 
-  worker.js                      -> raíz del repo
-  public/sw.js                   -> caché bp19
-  public/fx-base.js              -> sin onda dorada ni destello al tocar/guardar
-  public/fx-base.css             -> idem
-  public/cargar/cargar.js        -> sin scroll en PC/tablet, estado vuelve a Pendiente, sugerencias para barberos
-  public/cargar/cargar.css       -> modo una pantalla, Productos flotante
+  worker.js                        -> raíz. Caja de cualquier día + contactos libres con el mismo WhatsApp + buscador de clientes para barberos
+  public/sw.js                     -> caché bp20
+  public/gestion/gestion.js        -> selector de día en "Cierre de caja"
+  public/reservar/mis-turnos.html  -> muestra para quién es cada turno si hay más de una persona con el mismo número
+  public/cargar/cargar.js y .css   -> /cargar sin scroll, sugerencias para barberos, elegir contacto y "Es otra persona"
+  public/fx-base.js y .css         -> sin brillos al tocar
+
+CONTACTOS (sin restricciones):
+  - Un número puede tener todos los contactos que quieran.
+  - Se reutiliza un contacto solo si se lo elige de la lista de sugerencias o si se escribe EXACTAMENTE el mismo nombre (da igual mayúsculas, tildes o espacios). Cualquier otro nombre crea un contacto nuevo.
+  - En /cargar, la casilla "Es otra persona" fuerza un contacto nuevo aunque el nombre sea igual.
+  - Ya no se bloquea cambiar el WhatsApp de una ficha a un número que usa otro cliente.
+
+IMPORTANTE al desplegar worker.js:
+  - La primera vez que arranca, el Worker rehace la tabla bp_clients para sacarle el UNIQUE del WhatsApp (queda copia en bk_20261028_clients). Es automático y de una sola vez.
+  - Después de ese arranque, volver al Worker anterior NO es seguro si ya hay dos contactos con el mismo número.
 
 Aparte: borrar del repo los archivos sueltos de 1 byte: public/Z, public/cargar/Pop, public/gestion/X, public/img/S, public/reservar/C

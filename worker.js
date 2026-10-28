@@ -25,7 +25,7 @@ const SCHEMA = [
 `CREATE TABLE IF NOT EXISTS bp_settings (k TEXT PRIMARY KEY,v TEXT NOT NULL)`,
 `CREATE TABLE IF NOT EXISTS bp_staff (id TEXT PRIMARY KEY,name TEXT NOT NULL,role TEXT NOT NULL,pin_hash TEXT NOT NULL,active INTEGER NOT NULL DEFAULT 1)`,
 `CREATE TABLE IF NOT EXISTS bp_services (id TEXT PRIMARY KEY,name TEXT NOT NULL,price INTEGER NOT NULL,duration INTEGER NOT NULL)`,
-`CREATE TABLE IF NOT EXISTS bp_clients (id TEXT PRIMARY KEY,name TEXT NOT NULL,whatsapp TEXT UNIQUE NOT NULL,birthday TEXT,visits INTEGER NOT NULL DEFAULT 0,no_shows INTEGER NOT NULL DEFAULT 0,total_spent INTEGER NOT NULL DEFAULT 0,last_visit TEXT)`,
+`CREATE TABLE IF NOT EXISTS bp_clients (id TEXT PRIMARY KEY,name TEXT NOT NULL,whatsapp TEXT NOT NULL,birthday TEXT,visits INTEGER NOT NULL DEFAULT 0,no_shows INTEGER NOT NULL DEFAULT 0,total_spent INTEGER NOT NULL DEFAULT 0,last_visit TEXT)`,
 `CREATE TABLE IF NOT EXISTS bp_appts (id TEXT PRIMARY KEY,client_id TEXT NOT NULL,staff_id TEXT NOT NULL,service_id TEXT NOT NULL,service_name TEXT NOT NULL,price INTEGER NOT NULL,duration INTEGER NOT NULL,date TEXT NOT NULL,time TEXT NOT NULL DEFAULT '',kind TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'pending',pay TEXT,amount INTEGER NOT NULL DEFAULT 0,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`,
 `CREATE TABLE IF NOT EXISTS bp_expenses (id TEXT PRIMARY KEY,date TEXT NOT NULL,concept TEXT NOT NULL,amount INTEGER NOT NULL)`,
 `CREATE TABLE IF NOT EXISTS bp_payouts (id TEXT PRIMARY KEY,staff_id TEXT NOT NULL,date TEXT NOT NULL,amount INTEGER NOT NULL)`,
@@ -48,13 +48,20 @@ const SCHEMA = [
 
 const NEW_SERVICES = [['s1', 'Corte de cabello', 15000, 20, 'Corte a tu estilo', 'corte', 0], ['s2', 'Barba', 15000, 15, 'Afeitado contemporáneo', 'barba', 0], ['s3', 'Corte y barba', 17000, 20, 'Corte a tu estilo + afeitado contemporáneo', 'barba', 0], ['s4', 'Corte, barba y lavado', 22000, 30, 'Corte + afeitado contemporáneo + lavado', 'lavado', 0], ['s5', 'Servicio completo', 28000, 40, 'Corte, afeitado tradicional con toallas al vapor y lavado', 'afeitado', 0], ['s6', 'Tratamiento facial', 18000, 20, 'Mascarilla con vapor', 'facial', 1]]; // Precios de ejemplo: se cambian desde Gestión
 // Subí este valor cada vez que agregues una tabla, columna, índice o dato inicial en init(): así se vuelve a correr una vez.
-const SCHEMA_V = 'v8-sync2';
+const SCHEMA_V = 'v9-multicontacto';
 let ready = false;
 async function init(db) {
   if (ready) return;
   // Camino rápido: si la base ya está al día, una sola consulta alcanza (antes eran ~35 en cada arranque en frío).
   if (await db.prepare("SELECT v FROM bp_settings WHERE k='schema_v'").first().then(r => !!r && r.v === SCHEMA_V, () => false)) { ready = true; return; }
   await db.batch(SCHEMA.map(s => db.prepare(s)));
+  // v9: varios contactos pueden compartir WhatsApp (padre e hijo). SQLite no permite sacar un UNIQUE: se rearma la tabla (todo en una sola transacción) y antes queda una copia.
+  const cdef = await db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='bp_clients'").first();
+  if (cdef && /whatsapp\s+TEXT\s+UNIQUE/i.test(cdef.sql)) {
+    const ddl = cdef.sql.replace(/whatsapp\s+TEXT\s+UNIQUE\s+NOT\s+NULL/i, 'whatsapp TEXT NOT NULL').replace(/CREATE TABLE\s+"?bp_clients"?/i, 'CREATE TABLE bp_clients_n');
+    await db.batch([db.prepare('CREATE TABLE IF NOT EXISTS bk_20261028_clients AS SELECT * FROM bp_clients'), db.prepare('DROP TABLE IF EXISTS bp_clients_n'), db.prepare(ddl), db.prepare('INSERT INTO bp_clients_n SELECT * FROM bp_clients'), db.prepare('DROP TABLE bp_clients'), db.prepare('ALTER TABLE bp_clients_n RENAME TO bp_clients')]);
+  }
+  await db.prepare('CREATE INDEX IF NOT EXISTS bp_clients_w ON bp_clients(substr(whatsapp,-10))').run().catch(() => {});
   await db.prepare("INSERT OR IGNORE INTO bp_clients(id,name,whatsapp) VALUES('c_mostrador','Venta en mostrador','mostrador')").run();
   await db.prepare('ALTER TABLE bp_appts ADD COLUMN reminded INTEGER NOT NULL DEFAULT 0').run().catch(() => {});
   // Sincronización con el sistema de Santi: de dónde viene el turno y su id/versión allá.
@@ -178,8 +185,8 @@ async function spamCheck(req, db, B, kind) {
   await lockCheck(db, k, 15, 10 * MIN); await lockHit(db, k, 10 * MIN);
   const w = String(B.whatsapp || '').replace(/\D/g, '').slice(-10);
   if (kind === 'turno' && w.length >= 8) {
-    const c = (await db.prepare("SELECT COUNT(*) n FROM bp_appts a JOIN bp_clients c ON c.id=a.client_id WHERE substr(c.whatsapp,-10)=? AND a.kind='turno' AND a.status='pending' AND a.date>=?").bind(w, now().date).first()).n;
-    if (c >= 3) throw err(429, 'Ya tenés 3 turnos reservados. Cancelá uno para sacar otro.');
+    const pend = (await db.prepare("SELECT c.name n FROM bp_appts a JOIN bp_clients c ON c.id=a.client_id WHERE substr(c.whatsapp,-10)=? AND a.kind='turno' AND a.status='pending' AND a.date>=?").bind(w, now().date).all()).results; // el tope de 3 es por persona (mismo nombre): un papá puede sacar turnos para su hijo con el mismo número
+    if (pend.filter(r => sameName(r.n, B.name)).length >= 3) throw err(429, 'Ya tenés 3 turnos reservados. Cancelá uno para sacar otro.');
   }
 }
 async function dateOk(db, d) {
@@ -188,6 +195,18 @@ async function dateOk(db, d) {
 }
 
 const isDate = d => /^\d{4}-\d{2}-\d{2}$/.test(d || '');
+const dateAdd = (d, k) => { const x = new Date(d + 'T12:00:00Z'); x.setUTCDate(x.getUTCDate() + k); return x.toISOString().slice(0, 10); };
+// Efectivo que debería haber en la caja un día cualquiera (turnos hechos en efectivo + cobros de cancelaciones − gastos en efectivo) y su cierre si ya existe.
+const cashDay = async (db, date) => {
+  const [a, f, o, c] = await db.batch([
+    db.prepare("SELECT COALESCE(SUM(amount+prod_total),0) t FROM bp_appts WHERE status='done' AND pay='efectivo' AND date=?").bind(date),
+    db.prepare("SELECT COALESCE(SUM(amount),0) t FROM bp_fees WHERE paid=1 AND COALESCE(pay,'efectivo')='efectivo' AND paid_date=?").bind(date),
+    db.prepare("SELECT COALESCE(SUM(amount),0) t FROM bp_expenses WHERE date=? AND pay='efectivo'").bind(date),
+    db.prepare('SELECT * FROM bp_cash WHERE date=?').bind(date)]);
+  const inn = a.results[0].t + f.results[0].t, out = o.results[0].t;
+  return { date, in: inn, out, expected: inn - out, closed: c.results[0] || null };
+};
+const cashDate = (B, n) => { const d = B.date ? String(B.date) : n.date; if (!isDate(d)) throw err(400, 'Elegí un día válido'); if (d > n.date) throw err(400, 'No se puede cerrar la caja de un día que todavía no llegó'); if (d < dateAdd(n.date, -90)) throw err(400, 'Solo se puede cerrar la caja de los últimos 90 días'); return d; };
 const isTime = t => /^([01]\d|2[0-3]):[0-5]\d$/.test(t || '');
 const addD = (d, k) => { const x = new Date(d + 'T12:00:00Z'); x.setUTCDate(x.getUTCDate() + k); return x.toISOString().slice(0, 10); };
 const fd = d => d.slice(8) + '/' + d.slice(5, 7);
@@ -256,7 +275,7 @@ const prodSum = rows => rows.reduce((t, r) => t + r.qty * r.price, 0);
 const itemsText = rows => rows.map(r => `${r.qty} × ${r.name}`).join(', ');
 const itemStmts = (db, apptId, rows) => rows.map(r => db.prepare('INSERT INTO bp_items(id,appt_id,product_id,name,qty,price,comm_pct,held,cost) VALUES(?,?,?,?,?,?,?,?,?)').bind(uid('i'), apptId, r.product_id, r.name, r.qty, r.price, r.comm_pct, r.held, r.cost || 0));
 // Anti-duplicados: si el mismo pedido llega dos veces seguidas (doble toque, reintento, dos pestañas) devuelve el turno ya cargado en vez de crear otro.
-const dupAppt = (db, wa, where, binds, secs, sts = "'pending'") => db.prepare(`SELECT a.id,a.status FROM bp_appts a JOIN bp_clients c ON c.id=a.client_id WHERE substr(c.whatsapp,-10)=? AND a.status IN (${sts}) ${secs ? "AND a.created_at >= datetime('now', ?)" : ''} AND ${where} LIMIT 1`).bind(String(wa || '').replace(/\D/g, '').slice(-10), ...(secs ? [`-${secs} seconds`] : []), ...binds).first(); // secs=0 → sin ventana de tiempo (cualquier turno ya cargado cuenta)
+const dupAppt = async (db, wa, where, binds, secs, sts = "'pending'") => { const nm = wa && typeof wa === 'object' ? wa.name : null, w = wa && typeof wa === 'object' ? wa.wa : wa; const rows = (await db.prepare(`SELECT a.id,a.status,c.name cname FROM bp_appts a JOIN bp_clients c ON c.id=a.client_id WHERE substr(c.whatsapp,-10)=? AND a.status IN (${sts}) ${secs ? "AND a.created_at >= datetime('now', ?)" : ''} AND ${where} LIMIT 20`).bind(String(w || '').replace(/\D/g, '').slice(-10), ...(secs ? [`-${secs} seconds`] : []), ...binds).all()).results; return (nm == null ? rows[0] : rows.find(r => sameName(r.cname, nm))) || null; }; // secs=0 → sin ventana de tiempo (cualquier turno ya cargado cuenta)
 const giveBack = async (db, rows) => { for (const r of rows) if (r.held) await db.prepare('UPDATE bp_products SET stock=stock+? WHERE id=?').bind(r.qty, r.product_id).run(); };
 const lowNotify = (ctx, env, db, low) => { for (const l of low) ctx.waitUntil(notifyStaff(env, db, null, `Quedan ${l.left} de ${l.name}`, 'stock')); };
 // Compara lo pedido contra lo que el turno ya tenía: reserva (o devuelve) solo la diferencia, y se deshace todo si algo falla.
@@ -312,13 +331,17 @@ async function slots(db, date, svc, staff, extra = []) {
   }
   return out;
 }
+// Contactos libres: un número puede tener todos los contactos que quieran (padre, hijo, etc.). Solo se reutiliza un contacto si se lo elige de la lista, o si se escribe exactamente el mismo nombre (sin importar mayúsculas, tildes ni espacios). Cualquier otro nombre crea un contacto nuevo, y "Es otra persona" lo fuerza aunque el nombre sea igual.
+const nrm = s => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim();
+const sameName = (a, b) => { a = nrm(a); b = nrm(b); return !a || !b || a === b; };
 const canonWa = d => { d = String(d || '').replace(/\D/g, '').replace(/^00/, ''); if (d.length === 11 && d[0] === '0') d = d.slice(1); if (d.length === 10) return '549' + d; if (d.length === 12 && d.startsWith('54') && d[2] !== '9') return '549' + d.slice(2); if (d.length === 11 && d[0] === '9') return '54' + d; return d; };
-async function client(db, name, wa, bd) {
+async function client(db, name, wa, bd, opts = {}) {
   wa = canonWa(wa); name = String(name || '').trim().slice(0, 80);
   if (!name) throw err(400, 'Ingresá tu nombre');
   if (wa.length < 8) throw err(400, 'Ingresá un WhatsApp válido');
   bd = /^\d{4}-\d{2}-\d{2}$/.test(bd || '') ? bd : null;
-  const c = await db.prepare('SELECT id FROM bp_clients WHERE substr(whatsapp,-10)=?').bind(wa.slice(-10)).first();
+  const rows = (await db.prepare('SELECT id,name FROM bp_clients WHERE substr(whatsapp,-10)=? ORDER BY visits DESC,rowid').bind(wa.slice(-10)).all()).results;
+  const c = (opts.id && rows.find(r => r.id === String(opts.id))) || (opts.fresh ? null : rows.find(r => sameName(r.name, name)));
   if (c) { if (bd) await db.prepare('UPDATE bp_clients SET birthday=? WHERE id=?').bind(bd, c.id).run(); return c.id; }
   const id = uid('c'); await db.prepare('INSERT INTO bp_clients(id,name,whatsapp,birthday) VALUES(?,?,?,?)').bind(id, name, wa, bd).run(); return id;
 }
@@ -513,7 +536,7 @@ async function runRecurring(db, n) {
 const dupGroups = async db => {
   const rows = (await db.prepare("SELECT id,name,whatsapp,visits,total_spent,last_visit FROM bp_clients WHERE length(whatsapp)>=8 AND substr(whatsapp,-10) IN (SELECT substr(whatsapp,-10) FROM bp_clients WHERE length(whatsapp)>=8 GROUP BY substr(whatsapp,-10) HAVING COUNT(*)>1) ORDER BY substr(whatsapp,-10)").all()).results, g = {};
   for (const r of rows) (g[r.whatsapp.slice(-10)] ||= []).push(r);
-  return Object.entries(g).map(([key, items]) => ({ key, items: items.sort((x, y) => (y.visits - x.visits) || ((y.whatsapp.startsWith('549') ? 1 : 0) - (x.whatsapp.startsWith('549') ? 1 : 0)) || (y.whatsapp.length - x.whatsapp.length)) }));
+  return Object.entries(g).map(([key, all]) => ({ key, items: all.filter((x, i) => all.some((y, j) => j !== i && sameName(x.name, y.name))).sort((x, y) => (y.visits - x.visits) || ((y.whatsapp.startsWith('549') ? 1 : 0) - (x.whatsapp.startsWith('549') ? 1 : 0)) || (y.whatsapp.length - x.whatsapp.length)) })).filter(g => g.items.length > 1);
 };
 async function maintInfo(db) {
   const sync = (await db.prepare("SELECT o.appt_id id,o.intentos,o.ultimo_error err,a.date,a.time,a.status,a.service_name service,c.name cname FROM bp_sync_out o LEFT JOIN bp_appts a ON a.id=o.appt_id LEFT JOIN bp_clients c ON c.id=a.client_id WHERE o.estado='error' ORDER BY o.t DESC LIMIT 20").all()).results.map(r => ({ ...r, retry: r.status === 'pending' }));
@@ -606,7 +629,7 @@ async function syncStaff(db, env) {
 async function syncClient(db, name, wa) {
   wa = String(wa || '').replace(/\D/g, ''); name = String(name || '').trim().slice(0, 80);
   if (!name || wa.length < 8) throw err(400, 'Cliente inválido');
-  const c = await db.prepare('SELECT id FROM bp_clients WHERE substr(whatsapp,-10)=?').bind(wa.slice(-10)).first();
+  const c = (await db.prepare('SELECT id,name FROM bp_clients WHERE substr(whatsapp,-10)=? ORDER BY visits DESC,rowid').bind(wa.slice(-10)).all()).results.find(r => sameName(r.name, name));
   if (c) return c.id;
   const id = uid('c'); await db.prepare('INSERT INTO bp_clients(id,name,whatsapp) VALUES(?,?,?)').bind(id, name, wa).run(); return id;
 }
@@ -770,7 +793,7 @@ async function route(req, db, u, p, env, ctx) {
   if (p === '/api/book' && req.method === 'POST') {
     await spamCheck(req, db, B, 'turno'); await dateOk(db, B.date);
     const s = await pubSvc(db, B.service, !!B.guest, B.extras), st = await staffOk(db, B.staff);
-    if (await dupAppt(db, B.whatsapp, "a.kind='turno' AND a.staff_id=? AND a.date=? AND a.time=?", [st.id, B.date, B.time], 0, "'pending','done'")) return J(200, { ok: true, dup: true, service: s.name, staff: st.name, date: B.date, time: B.time, price: s.price, products: [], total: s.price });
+    if (await dupAppt(db, { wa: B.whatsapp, name: B.name }, "a.kind='turno' AND a.staff_id=? AND a.date=? AND a.time=?", [st.id, B.date, B.time], 0, "'pending','done'")) return J(200, { ok: true, dup: true, service: s.name, staff: st.name, date: B.date, time: B.time, price: s.price, products: [], total: s.price });
     if (!(await slots(db, B.date, s, st.id, await santiExtra(env, B.date, st.id))).includes(B.time)) throw err(409, 'Ese horario ya no está disponible');
     const cid = await client(db, B.name, B.whatsapp, B.birthday), id = uid('a');
     const pl = await planItems(db, B.products, []);
@@ -782,7 +805,7 @@ async function route(req, db, u, p, env, ctx) {
   if (p === '/api/queue' && req.method === 'POST') {
     await spamCheck(req, db, B, 'fila');
     const s = await pubSvc(db, B.service, !!B.guest, B.extras);
-    if (await dupAppt(db, B.whatsapp, "a.kind='fila' AND a.service_id=? AND a.date=?", [s.id, n.date], 0) || await dupAppt(db, B.whatsapp, "a.kind='fila' AND a.service_id=? AND a.date=?", [s.id, n.date], 900, "'done'")) return J(200, { ok: true, dup: true, service: s.name, position: (await queueInfo(db)).position, products: [], total: s.price });
+    if (await dupAppt(db, { wa: B.whatsapp, name: B.name }, "a.kind='fila' AND a.service_id=? AND a.date=?", [s.id, n.date], 0) || await dupAppt(db, { wa: B.whatsapp, name: B.name }, "a.kind='fila' AND a.service_id=? AND a.date=?", [s.id, n.date], 900, "'done'")) return J(200, { ok: true, dup: true, service: s.name, position: (await queueInfo(db)).position, products: [], total: s.price });
     const cid = await client(db, B.name, B.whatsapp, B.birthday), info = await queueInfo(db);
     const qid = uid('a'), pl = await planItems(db, B.products, []);
     try { await db.batch([db.prepare("INSERT INTO bp_appts(id,client_id,staff_id,service_id,service_name,price,duration,date,kind,extras) VALUES(?,?,'',?,?,?,?,?,'fila',?)").bind(qid, cid, s.id, s.name, s.price, s.duration, n.date, exJson(s)), ...itemStmts(db, qid, pl.rows)]); } catch (e) { await giveBack(db, pl.rows); throw e; }
@@ -835,7 +858,7 @@ async function route(req, db, u, p, env, ctx) {
   if (p === '/api/my-turns') {
     const w = (u.searchParams.get('wa') || '').replace(/\D/g, '').slice(-10);
     if (w.length < 8) throw err(400, 'WhatsApp inválido');
-    const r = (await db.prepare("SELECT a.id,a.date,a.time,a.service_name,a.price,s.name staff FROM bp_appts a JOIN bp_clients c ON c.id=a.client_id JOIN bp_staff s ON s.id=a.staff_id WHERE substr(c.whatsapp,-10)=? AND a.kind='turno' AND a.status='pending' AND a.date>=? ORDER BY a.date,a.time").bind(w, n.date).all()).results;
+    const r = (await db.prepare("SELECT a.id,a.date,a.time,a.service_name,a.price,s.name staff,c.name cname FROM bp_appts a JOIN bp_clients c ON c.id=a.client_id JOIN bp_staff s ON s.id=a.staff_id WHERE substr(c.whatsapp,-10)=? AND a.kind='turno' AND a.status='pending' AND a.date>=? ORDER BY a.date,a.time").bind(w, n.date).all()).results;
     await attachItems(db, r); r.forEach(t => { t.total = t.price + prodSum(t.items); });
     return J(200, { turns: r });
   }
@@ -909,7 +932,7 @@ async function route(req, db, u, p, env, ctx) {
     if (touch) {
       if (!nm) throw err(400, 'Ingresá el nombre');
       if (wa.length < 8) throw err(400, 'Ingresá un WhatsApp válido');
-      const other = await db.prepare('SELECT id,name FROM bp_clients WHERE whatsapp=? AND id!=?').bind(wa, cur.id).first();
+      const other = (await db.prepare('SELECT id,name FROM bp_clients WHERE substr(whatsapp,-10)=? AND id!=? ORDER BY visits DESC,rowid').bind(wa.slice(-10), cur.id).all()).results.find(o => sameName(o.name, nm));
       if (other || mostr) {
         cid = other ? other.id : await client(db, nm, wa, bd);
         if (!mostr) st2.push(db.prepare('UPDATE bp_clients SET visits=MAX(visits-1,0),total_spent=MAX(total_spent-?,0) WHERE id=?').bind(a.amount + pt, cur.id));
@@ -989,9 +1012,9 @@ async function route(req, db, u, p, env, ctx) {
     const sf = me.role === 'owner' ? await staffOk(db, B.staff) : { id: me.id, name: me.name }, s0 = await svcOf(db, B.service, false), s = await withExtras(db, s0, B.extras, s0.id, true);
     // Desde el panel se carga libre: cualquier día y hora, sin chequear choques, bloqueos ni horario de atención (la reserva online sigue con sus reglas).
     if (!isDate(B.date) || !isTime(B.time)) throw err(400, 'Elegí una fecha y una hora válidas');
-    const dup = await dupAppt(db, B.whatsapp, "a.kind='turno' AND a.staff_id=? AND a.date=? AND a.time=?", [sf.id, B.date, B.time], 0, "'pending','done'");
+    const dup = B.fresh ? null : await dupAppt(db, { wa: B.whatsapp, name: B.name }, "a.kind='turno' AND a.staff_id=? AND a.date=? AND a.time=?", [sf.id, B.date, B.time], 0, "'pending','done'");
     if (dup) { await audit(db, me, 'Turno repetido (no se duplicó)', `${String(B.name || '').slice(0, 40)} · ${fd(B.date)} ${B.time} · ${sf.name}`).catch(() => {}); return J(200, { ok: true, id: dup.id, dup: true }); }
-    const cid = await client(db, B.name, B.whatsapp, null), id = uid('a'), pr = B.price !== '' && B.price != null && Number.isFinite(+B.price) && +B.price >= 0 ? Math.round(+B.price) : s.price;
+    const cid = await client(db, B.name, B.whatsapp, null, { id: B.client_id, fresh: !!B.fresh }), id = uid('a'), pr = B.price !== '' && B.price != null && Number.isFinite(+B.price) && +B.price >= 0 ? Math.round(+B.price) : s.price;
     const pl = await planItems(db, B.products, []);
     try { await db.batch([db.prepare("INSERT INTO bp_appts(id,client_id,staff_id,service_id,service_name,price,duration,date,time,kind,extras) VALUES(?,?,?,?,?,?,?,?,?,'turno',?)").bind(id, cid, sf.id, s.id, s.name, pr, s.duration, B.date, B.time, exJson(s)), ...itemStmts(db, id, pl.rows)]); } catch (e) { await giveBack(db, pl.rows); throw e; }
     await audit(db, me, 'Turno cargado', `${String(B.name || '').slice(0, 40)} · ${fd(B.date)} ${B.time} · ${s.name} · ${sf.name}${B.date < n.date ? ' · ⚠ fecha pasada' : ''}`).catch(() => {});
@@ -1001,9 +1024,9 @@ async function route(req, db, u, p, env, ctx) {
   }
   if (p === '/api/queue/add' && req.method === 'POST') { // se anota en la fila general a quien llegó sin turno; el barbero se indica al cerrar el corte
     const s0 = await svcOf(db, B.service, false), s = await withExtras(db, s0, B.extras, s0.id, true);
-    const dup = await dupAppt(db, B.whatsapp, "a.kind='fila' AND a.service_id=? AND a.date=?", [s0.id, n.date], 0) || await dupAppt(db, B.whatsapp, "a.kind='fila' AND a.service_id=? AND a.date=?", [s0.id, n.date], 900, "'done'");
+    const dup = B.fresh ? null : await dupAppt(db, { wa: B.whatsapp, name: B.name }, "a.kind='fila' AND a.service_id=? AND a.date=?", [s0.id, n.date], 0) || await dupAppt(db, { wa: B.whatsapp, name: B.name }, "a.kind='fila' AND a.service_id=? AND a.date=?", [s0.id, n.date], 900, "'done'");
     if (dup) return J(200, { ok: true, id: dup.id, dup: true, position: (await queueInfo(db)).position });
-    const cid = await client(db, B.name, B.whatsapp, null), id = uid('a'), pr = B.price !== '' && B.price != null && Number.isFinite(+B.price) && +B.price >= 0 ? Math.round(+B.price) : s.price;
+    const cid = await client(db, B.name, B.whatsapp, null, { id: B.client_id, fresh: !!B.fresh }), id = uid('a'), pr = B.price !== '' && B.price != null && Number.isFinite(+B.price) && +B.price >= 0 ? Math.round(+B.price) : s.price;
     const pos = (await queueInfo(db)).position, pl = await planItems(db, B.products, []);
     try { await db.batch([db.prepare("INSERT INTO bp_appts(id,client_id,staff_id,service_id,service_name,price,duration,date,kind,extras) VALUES(?,?,'',?,?,?,?,?,'fila',?)").bind(id, cid, s.id, s.name, pr, s.duration, n.date, exJson(s)), ...itemStmts(db, id, pl.rows)]); } catch (e) { await giveBack(db, pl.rows); throw e; }
     lowNotify(ctx, env, db, pl.low);
@@ -1223,14 +1246,14 @@ async function route(req, db, u, p, env, ctx) {
     await audit(db, me, 'Gasto fijo borrado', `${old.concept} ${money(old.amount)}`);
     return J(200, { ok: true });
   }
-  if (p === '/api/admin/cash' && req.method === 'POST') {
+  if (p === '/api/admin/cash/day' && req.method === 'POST') return J(200, await cashDay(db, cashDate(B, n))); // para el selector de día del cierre de caja
+  if (p === '/api/admin/cash' && req.method === 'POST') { // cierra la caja de hoy o de un día anterior (B.date)
     const counted = Math.round(+B.counted);
     if (!(counted >= 0) || B.counted === '' || B.counted == null) throw err(400, 'Ingresá cuánto hay en la caja');
-    const inn = (await db.prepare("SELECT COALESCE(SUM(amount+prod_total),0) t FROM bp_appts WHERE status='done' AND pay='efectivo' AND date=?").bind(n.date).first()).t + (await db.prepare("SELECT COALESCE(SUM(amount),0) t FROM bp_fees WHERE paid=1 AND COALESCE(pay,'efectivo')='efectivo' AND paid_date=?").bind(n.date).first()).t;
-    const out = (await db.prepare("SELECT COALESCE(SUM(amount),0) t FROM bp_expenses WHERE date=? AND pay='efectivo'").bind(n.date).first()).t, exp = inn - out;
-    await db.prepare('INSERT OR REPLACE INTO bp_cash(date,expected,counted,diff,staff_id,staff_name) VALUES(?,?,?,?,?,?)').bind(n.date, exp, counted, counted - exp, me.id, me.name).run();
-    await audit(db, me, 'Cierre de caja', `Esperado ${money(exp)} · contado ${money(counted)} · diferencia ${money(counted - exp)}`);
-    return J(200, { ok: true, expected: exp, diff: counted - exp });
+    const day = cashDate(B, n), exp = (await cashDay(db, day)).expected;
+    await db.prepare('INSERT OR REPLACE INTO bp_cash(date,expected,counted,diff,staff_id,staff_name) VALUES(?,?,?,?,?,?)').bind(day, exp, counted, counted - exp, me.id, me.name).run();
+    await audit(db, me, 'Cierre de caja', `${day !== n.date ? fd(day) + ' · ' : ''}Esperado ${money(exp)} · contado ${money(counted)} · diferencia ${money(counted - exp)}`);
+    return J(200, { ok: true, expected: exp, diff: counted - exp, date: day });
   }
   if (p === '/api/admin/history') {
     const cur = n.date.slice(0, 7), first = ymAdd(cur, -11) + '-01', pct = +st.commission;
@@ -1433,8 +1456,6 @@ async function route(req, db, u, p, env, ctx) {
     if (!nm) throw err(400, 'Ingresá el nombre');
     if (wa.length < 8) throw err(400, 'Ingresá un WhatsApp válido');
     if (bd && !isDate(bd)) throw err(400, 'El cumpleaños no es una fecha válida');
-    const dup = await db.prepare('SELECT name FROM bp_clients WHERE whatsapp=? AND id!=?').bind(wa, c.id).first();
-    if (dup) throw err(409, `Ese WhatsApp ya es de ${dup.name}`);
     await db.prepare('UPDATE bp_clients SET name=?,whatsapp=?,birthday=?,notes=? WHERE id=?').bind(nm, wa, bd, String(B.notes || '').trim().slice(0, 300), c.id).run();
     return J(200, { ok: true });
   }
