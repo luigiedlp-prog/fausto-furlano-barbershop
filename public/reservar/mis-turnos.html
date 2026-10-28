@@ -5,7 +5,7 @@
 <script>
 try{$('w').value=localStorage.getItem('bp_whatsapp')||''}catch(e){}
 const wa=()=>formatWA($('w').value);
-async function load(){$('e').textContent='';try{const r=await api('/my-turns?wa='+wa());$('l').innerHTML=r.turns.length?r.turns.map(t=>`<div class="group pad" style="margin-top:12px"><b>${esc(t.service_name)}</b>${t.items&&t.items.length?`<div class="sub">${t.items.map(i=>i.qty+' × '+esc(i.name)).join(' · ')}</div>`:''}<div class="sub">${esc(longDate(t.date))} · ${esc(t.time)} · ${esc(t.staff)}</div><div class="sub"><b>Total ${fmt(t.total)}</b></div><button class="btn" style="margin-top:10px" onclick="cancel('${t.id}')">Cancelar turno</button></div>`).join(''):'<div class="group pad" style="margin-top:12px"><b>No tenés turnos pendientes</b></div>'}catch(x){$('e').textContent=x.message}}
+var multi=false;async function load(){$('e').textContent='';try{const r=await api('/my-turns?wa='+wa());$('l').innerHTML=r.turns.length?(multi=new Set(r.turns.map(t=>t.cname)).size>1,r.turns).map(t=>`<div class="group pad" style="margin-top:12px"><b>${esc(t.service_name)}</b>${multi?`<div class="sub">Para: ${esc(t.cname)}</div>`:''}${t.items&&t.items.length?`<div class="sub">${t.items.map(i=>i.qty+' × '+esc(i.name)).join(' · ')}</div>`:''}<div class="sub">${esc(longDate(t.date))} · ${esc(t.time)} · ${esc(t.staff)}</div><div class="sub"><b>Total ${fmt(t.total)}</b></div><button class="btn" style="margin-top:10px" onclick="cancel('${t.id}')">Cancelar turno</button></div>`).join(''):'<div class="group pad" style="margin-top:12px"><b>No tenés turnos pendientes</b></div>'}catch(x){$('e').textContent=x.message}}
 Object.defineProperty(PUSH,'wa',{get:()=>wa(),set:()=>{}});
 PUSH.onchange=()=>{$('ps').innerHTML=PUSH.card('card')};
 PUSH.init(false);
