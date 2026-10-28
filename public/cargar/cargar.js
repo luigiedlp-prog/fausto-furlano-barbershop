@@ -187,3 +187,5 @@
   document.addEventListener('click',function(e){var d=document.querySelector('html.cg-fit .cg-det[open]');if(d&&!d.contains(e.target))d.removeAttribute('open')});
   document.addEventListener('keydown',function(e){if(e.key==='Escape')close()});
 })();
+
+guardSalir();
