@@ -10,6 +10,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Jost:wght@400;500;600&family=Playball&display=swap" rel="stylesheet" media="print" onload="this.media='all'"><noscript><link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Jost:wght@400;500;600&family=Playball&display=swap" rel="stylesheet"></noscript>
 <link rel="stylesheet" href="/app.css">
 <link rel="stylesheet" href="/desktop.css" media="(min-width:820px)">
+<link rel="stylesheet" href="/fx-base.css"><link rel="stylesheet" href="/reservar/reservar-fx.css">
 <link rel="manifest" href="/reservar/manifest.webmanifest"><link rel="icon" href="/icon-192.png" type="image/png"><link rel="apple-touch-icon" href="/apple-touch-icon.png"><script>if("serviceWorker"in navigator)navigator.serviceWorker.register("/sw.js").catch(()=>{})</script>
 <script>try{document.documentElement.dataset.theme=localStorage.getItem('bp_theme')||'dark'}catch(e){}</script></head>
 <body class="room">
@@ -160,5 +161,6 @@ function showSuccess(r){
 function again(){sel={service:null,staff:null,date:data.today,time:null,name:'',wa:sel.wa,bd:'',extras:[],products:{}};times=[];qi=null;start()}
 start();
 </script>
+<script src="/fx-base.js"></script><script src="/reservar/reservar-fx.js"></script>
 </body>
 </html>

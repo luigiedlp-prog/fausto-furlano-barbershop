@@ -1,0 +1,28 @@
+/* Reservar FX · lo propio de la página de clientes (se suma a fx-base.css). Conserva la foto del local de fondo y sus animaciones propias. */
+/* Fondo: la aurora va sobre la foto del local (en oscuro no tapa) */
+html[data-role=client][data-theme=dark]{--bgbase:transparent;--vig:.35}
+
+/* Piezas que solo existen acá, en vidrio */
+html[data-theme] .dock,html[data-theme] .ticket,html[data-theme] .place{
+  background:var(--gl)!important;border:1px solid var(--gl-bd)!important;-webkit-backdrop-filter:var(--bl);backdrop-filter:var(--bl);
+  box-shadow:inset 0 1px 0 var(--gl-hi),inset 0 -1px 0 var(--gl-lo),var(--gl-sh)!important}
+html:not(.fx-long)[data-theme] .dock{background:var(--spec),var(--gl)!important}
+html[data-theme] .dock{-webkit-backdrop-filter:var(--bl-o);backdrop-filter:var(--bl-o)}
+html[data-theme] .time,html[data-theme] .pill,html[data-theme] .contact a,html[data-theme] .qty button{
+  background:var(--gl-in)!important;border:1px solid var(--gl-bd);box-shadow:inset 0 1px 0 var(--gl-hi)}
+html[data-theme] .contact a{-webkit-backdrop-filter:var(--bl-s);backdrop-filter:var(--bl-s)}
+.time,.seg button{position:relative;overflow:hidden}
+html[data-theme] .time.on{background:linear-gradient(180deg,#f6e6b4,#c99a2e)!important;color:#17130a;border-color:rgba(255,255,255,.45);box-shadow:inset 0 1px 0 rgba(255,255,255,.65),0 6px 20px var(--glow)}
+html[data-theme] .svc.on{background:linear-gradient(90deg,rgba(236,208,138,.2),transparent)}
+html[data-theme] .steps i{background:var(--gl-in);box-shadow:inset 0 1px 0 var(--gl-hi)}
+html[data-theme] .steps i.on{background:linear-gradient(90deg,var(--fx-g),var(--fx-g2));box-shadow:0 0 12px var(--glow)}
+html[data-theme=light] .ticket::before,html[data-theme=light] .ticket::after{background:#f1eadb}
+
+/* Turno confirmado: sello dorado con aro de luz */
+html[data-theme] .okmark{position:relative;background:var(--gl-hot)!important;box-shadow:inset 0 1px 0 var(--gl-hi),0 0 44px var(--glow)!important;animation:fxPopIn2 .8s var(--fx-sp) backwards}
+.okmark::after{content:"";position:absolute;inset:-7px;border-radius:50%;background:conic-gradient(from 0deg,transparent 0 50%,var(--fx-g2) 82%,transparent);-webkit-mask:radial-gradient(farthest-side,transparent calc(100% - 3px),#000 calc(100% - 2px));mask:radial-gradient(farthest-side,transparent calc(100% - 3px),#000 calc(100% - 2px));animation:fxSpin 3.4s linear infinite;pointer-events:none}
+@keyframes fxPopIn2{from{opacity:0;transform:scale(.4) rotate(-25deg)}}
+html.fx-lite .okmark::after{animation:none;display:none}
+
+/* Esqueleto de la primera carga con la forma de la página */
+html[data-role=client] .skel i:nth-child(1){height:230px}html[data-role=client] .skel i:nth-child(2){height:88px}html[data-role=client] .skel i:nth-child(3){height:210px}
