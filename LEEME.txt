@@ -1,0 +1,10 @@
+Cambios en /cargar (copiar sobre el repo, respetando las carpetas):
+
+  worker.js                      -> raíz del repo
+  public/sw.js                   -> caché bp19
+  public/fx-base.js              -> sin onda dorada ni destello al tocar/guardar
+  public/fx-base.css             -> idem
+  public/cargar/cargar.js        -> sin scroll en PC/tablet, estado vuelve a Pendiente, sugerencias para barberos
+  public/cargar/cargar.css       -> modo una pantalla, Productos flotante
+
+Aparte: borrar del repo los archivos sueltos de 1 byte: public/Z, public/cargar/Pop, public/gestion/X, public/img/S, public/reservar/C

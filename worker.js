@@ -1069,6 +1069,12 @@ async function route(req, db, u, p, env, ctx) {
     if (tot) await audit(db, me, 'Cobro de cancelación', `${money(tot)} · ${pay}`);
     return J(200, { ok: true });
   }
+  if (p === '/api/client/find' && req.method === 'POST') { // sugerencias al cargar un turno: no entrega la lista completa, solo coincidencias (el dueño ya la recibe en /boot)
+    const q = String(B.q || '').trim().toLowerCase().replace(/[%_\\]/g, '').slice(0, 40), d = q.replace(/\D/g, '');
+    if (q.length < 3) return J(200, { clients: [] });
+    const rows = (await db.prepare("SELECT id,name,whatsapp FROM bp_clients WHERE id!='c_mostrador' AND (lower(name) LIKE ?1 OR (length(?2)>2 AND whatsapp LIKE ?3)) ORDER BY last_visit IS NULL,last_visit DESC LIMIT 4").bind('%' + q + '%', d, '%' + d + '%').all()).results;
+    return J(200, { clients: rows });
+  }
   if (p === '/api/client/note' && req.method === 'POST') {
     if (!(await db.prepare('SELECT id FROM bp_clients WHERE id=?').bind(B.id).first())) throw err(404, 'Cliente no encontrado');
     await db.prepare('UPDATE bp_clients SET notes=? WHERE id=?').bind(String(B.notes || '').trim().slice(0, 300), B.id).run();
