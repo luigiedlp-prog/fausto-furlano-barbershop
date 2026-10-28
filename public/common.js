@@ -140,4 +140,20 @@ W.dlg=function({title='',msg='',ok='Aceptar',cancel='',input=false,def='',ph='',
 W.alertD=(msg,title)=>dlg({msg,title});
 W.confirmD=(msg,ok='Confirmar',danger=false)=>dlg({msg,ok,cancel:'Cancelar',danger});
 W.promptD=(msg,def='',ph='')=>dlg({msg,input:true,def,ph,ok:'Aceptar',cancel:'Cancelar'});
+
+/* Botón "atrás" tocado sin querer: pregunta antes de salir de la página.
+   Agrega una entrada al historial (después del primer toque, así el navegador la respeta) y, si la persona vuelve atrás, muestra el diálogo. */
+W.guardSalir=function(){
+  let armed=false,leaving=false,asking=false;
+  const arm=()=>{if(armed)return;armed=true;history.pushState({guard:1},'')};
+  ['pointerdown','keydown'].forEach(t=>W.addEventListener(t,arm,{once:true,passive:true}));
+  W.addEventListener('popstate',async()=>{
+    if(!armed||leaving||asking)return;
+    asking=true;
+    const ok=await confirmD('¿Seguro que querés salir de la página?','Salir',true);
+    asking=false;
+    if(ok){leaving=true;history.back()}
+    else history.pushState({guard:1},'') // se queda: se vuelve a poner la entrada de aviso
+  });
+};
 })(window);
