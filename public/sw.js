@@ -1,5 +1,5 @@
 // Service worker: app instalable + avisos push (mismo sistema que Melly Barber y BarberFlowBR). Nunca guarda /api (siempre datos en vivo).
-const CACHE='bp15';
+const CACHE='bp16';
 self.addEventListener('install',()=>self.skipWaiting());
 self.addEventListener('activate',e=>e.waitUntil((async()=>{for(const k of await caches.keys())if(k!==CACHE)await caches.delete(k);await self.clients.claim()})()));
 self.addEventListener('push',e=>{
