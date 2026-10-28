@@ -6,8 +6,6 @@
 .btn:active,.evacts button:active,.pact button:active,.tab:active,.qd:active{transform:scale(.95)}
 .btn.primary::after{content:"";position:absolute;top:0;bottom:0;left:0;width:38%;background:linear-gradient(100deg,transparent,rgba(255,255,255,.42),transparent);transform:translateX(-170%) skewX(-20deg);animation:fxBtn 4.6s ease-in-out 1.6s infinite;pointer-events:none}
 @keyframes fxBtn{0%{transform:translateX(-170%) skewX(-20deg)}30%,100%{transform:translateX(400%) skewX(-20deg)}}
-.fx-rip{position:absolute;border-radius:50%;background:radial-gradient(circle,rgba(236,208,138,.6),transparent 65%);transform:scale(0);animation:fxRip .62s ease-out forwards;pointer-events:none}
-@keyframes fxRip{to{transform:scale(1);opacity:0}}
 
 /* Hoja inferior, aviso y destello de éxito */
 .overlay.show .sheet{animation:fxSheet .6s var(--fx-e)}
@@ -15,14 +13,12 @@
 .sheet .handle{box-shadow:0 0 14px var(--glow)}
 .toast.show::after{content:"";position:absolute;top:0;bottom:0;left:0;width:40%;background:linear-gradient(100deg,transparent,rgba(236,208,138,.4),transparent);transform:translateX(-150%) skewX(-18deg);animation:fxBtn 1.1s ease-out forwards;pointer-events:none}
 .toast{overflow:hidden}
-.fx-flash{position:fixed;inset:0;z-index:70;pointer-events:none;background:linear-gradient(105deg,transparent 38%,rgba(236,208,138,.38) 50%,transparent 62%);transform:translateX(-100%);animation:fxFlash .85s cubic-bezier(.4,0,.2,1) forwards}
-@keyframes fxFlash{to{transform:translateX(100%)}}
 
 /* Modo liviano / pausa / reducir movimiento */
 html.fx-lite .hero .halo::after,html.fx-lite .fx-pole i,html.fx-lite .today::before,html.fx-lite .today::after,html.fx-lite .next.now::before,html.fx-lite .next.now .qd::after,html.fx-lite .btn.primary::after,html.fx-lite .mini::after{animation:none}
 html.fx-lite .today::after,html.fx-lite .next.now::before,html.fx-lite .btn.primary::after,html.fx-lite .mini::after{display:none}
 html.fx-pause *,html.fx-pause *::before,html.fx-pause *::after{animation-play-state:paused!important}
-@media(prefers-reduced-motion:reduce){.fx-pole i,.fx-flash,.fx-rip{display:none}#app.fx-go>*,#app.fx-go *{animation:none!important}}
+@media(prefers-reduced-motion:reduce){.fx-pole i{display:none}#app.fx-go>*,#app.fx-go *{animation:none!important}}
 
 /* ===== FONDO: aurora dorada + poste de barbero + tijera gigante ===== */
 body::before,body::after{display:none!important}

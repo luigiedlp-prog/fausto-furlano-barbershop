@@ -20,19 +20,7 @@
     document.body.appendChild(r);setTimeout(function(){r.remove()},1900);
     FX.flash(.7);
   };
-  FX.flash=function(delay){
-    if(calm)return;
-    var f=document.createElement('div');f.className='fx-flash';f.style.animationDelay=(delay||0)+'s';document.body.appendChild(f);setTimeout(function(){f.remove()},1700);
-  };
-
-  // Onda dorada al tocar
-  document.addEventListener('pointerdown',function(e){
-    if(calm||!e.target.closest)return;
-    var b=e.target.closest('.btn,.evacts button,.pact button,.qd,.tab,.time,.seg button');if(!b)return;
-    var r=b.getBoundingClientRect(),s=Math.max(r.width,r.height)*1.6,i=document.createElement('i');
-    i.className='fx-rip';i.style.cssText='width:'+s+'px;height:'+s+'px;left:'+(e.clientX-r.left-s/2)+'px;top:'+(e.clientY-r.top-s/2)+'px';
-    b.appendChild(i);setTimeout(function(){i.remove()},650);
-  },{passive:true});
+  FX.flash=function(){}; // destello dorado quitado a pedido
 
   // Aviso de guardado: destello (cada página puede reaccionar al evento fx:toast)
   var ta=document.getElementById('toast');
@@ -40,7 +28,6 @@
     if(!ta.classList.contains('show')||calm)return;
     var d={text:ta.textContent,handled:false};
     dispatchEvent(new CustomEvent('fx:toast',{detail:d}));
-    if(!d.handled)FX.flash(0);
   }).observe(ta,{attributes:true,attributeFilter:['class']});
 
   // Reflejo del vidrio: sigue la inclinación del celular (o el mouse en compu)
