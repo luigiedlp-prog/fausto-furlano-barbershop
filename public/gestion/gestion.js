@@ -234,7 +234,14 @@ function cajaAdd(d,k){const x=new Date(d+'T12:00:00Z');x.setUTCDate(x.getUTCDate
 function cajaPick(){const d=cajaDate(),t=M.today,y=cajaAdd(t,-1);return `<div class="seg" style="margin-bottom:10px"><button class="${d===t?'on':''}" onclick="cajaGo('${t}')">Hoy</button><button class="${d===y?'on':''}" onclick="cajaGo('${y}')">Ayer</button></div><div class="field" style="margin-top:0"><label>Otro día</label><input id="cdate" type="date" value="${d}" min="${cajaAdd(t,-90)}" max="${t}" onchange="if(this.value)cajaGo(this.value)"></div>`}
 async function cajaGo(d){CD=d===M.today?null:d;const want=CD;CX=null;draw();if(!want)return;try{const r=await post('/admin/cash/day',{date:want});if(CD!==want)return;CX=r}catch(e){alertD(e.message);CD=null}draw()}
 function cajaDiff(){const C=cajaCur(),v=$('cc').value;if(C)$('cd').textContent=v===''?'':cajaTxt(+v-C.expected)}
-async function saveCaja(){const v=$('cc').value;if(v===''){alertD('Ingresá cuánto hay en la caja');return}const b=$('cb');if(b)b.disabled=true;try{const r=await post('/admin/cash',{counted:v,date:cajaDate()});await load();if(CD)CX=await post('/admin/cash/day',{date:CD});draw();toast(r.diff===0?'Caja justa · cierre guardado':'Cierre guardado')}catch(e){alertD(e.message)}finally{const b2=$('cb');if(b2)b2.disabled=false}}
+const CAJA_DIF_ALTA=5000; // desde esta diferencia (en $) el cartel de confirmación avisa que es grande
+async function saveCaja(){const v=$('cc').value;if(v===''){alertD('Ingresá cuánto hay en la caja');return}
+  const C=cajaCur(),d=cajaDate();
+  if(C){ // antes de guardar: se muestra lo esperado, lo contado y la diferencia para confirmar
+    const cont=Math.round(+v),dif=cont-C.expected,alta=Math.abs(dif)>CAJA_DIF_ALTA,cl=!!C.closed;
+    const msg=`¿${cl?'Actualizar':'Guardar'} el cierre de la caja de ${d===M.today?'hoy':'el '+dm(d)}?\n\nDebería haber: ${fmt(C.expected)}\nContado: ${fmt(cont)}\n${cajaTxt(dif)}`+(alta?'\n\n⚠️ La diferencia es grande. Revisá el conteo y los gastos antes de guardar.':'');
+    if(!await confirmD(msg,cl?'Actualizar cierre':'Guardar cierre',alta))return}
+  const b=$('cb');if(b)b.disabled=true;try{const r=await post('/admin/cash',{counted:v,date:cajaDate()});await load();if(CD)CX=await post('/admin/cash/day',{date:CD});draw();toast(r.diff===0?'Caja justa · cierre guardado':'Cierre guardado')}catch(e){alertD(e.message)}finally{const b2=$('cb');if(b2)b2.disabled=false}}
 async function addExp(force){
   if(expBusy)return;
   const c=$('gc').value.trim(),a=$('gm').value,k=$('gk').value,d=$('gd').value||M.today;
@@ -458,6 +465,7 @@ async function doRecover(){try{await post('/recover',{answer:$('ra').value,pin:$
 
 setInterval(()=>{if(M&&tab==='dia'&&!$('overlay').classList.contains('show')&&!document.querySelector('.dlg')&&document.visibilityState==='visible'){const b=new Set(M.day.map(a=>a.id));load().then(()=>{if(M.day.some(a=>!b.has(a.id))){toast('Nuevo turno o cliente en la fila');try{navigator.vibrate&&navigator.vibrate(200)}catch(e){}}draw()}).catch(()=>{})}},15000);
 boot();
+guardSalir();
 
 /* Cambio de día con la app abierta: al pasar la medianoche (hora de Buenos Aires) la página se recarga sola para que agenda, caja y formularios arranquen en el día nuevo.
    Si hay una hoja o un diálogo abierto espera a que se cierre, así no se pierde lo que se está escribiendo. */
