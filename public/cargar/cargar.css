@@ -24,5 +24,25 @@ html[data-theme] .seg.cg-st button.on[data-v=cancelled]{color:var(--bad,#ff6b5f)
 
 /* Página aparte */
 a.glassbtn{display:grid;place-items:center;text-decoration:none;color:inherit}
-@media(min-width:900px){.wrap{max-width:760px}.cg-grid{grid-template-columns:repeat(3,1fr)}}
 #backBtn{margin-left:auto}
+.cg-top{display:block}
+.cg-keys{display:none;text-align:center;color:var(--sub);font-size:13px;margin:12px 0 0}
+.cg-keys kbd{font:inherit;font-size:12px;padding:2px 7px;border-radius:7px;border:1px solid var(--gl-bd,var(--line2));background:var(--gl-in,var(--card2))}
+@media(hover:hover) and (pointer:fine){.cg-keys{display:block}.cg-chip:hover{border-color:var(--gold,#d4af5a);transform:translateY(-1px)}.cg-chip:active{transform:scale(.97)}}
+/* PC: mismo zoom que el resto del panel (app.css lo achica al 75% y desktop.css lo corrige) */
+@media(min-width:820px){html{zoom:1}}
+@media(min-width:820px) and (max-width:1279px){html[data-role=admin]{zoom:.85}}
+/* PC: dos columnas, más ancho, título y modo en una sola línea */
+@media(min-width:900px){
+  html[data-role=admin] .wrap{max-width:1180px;padding-left:40px;padding-right:40px}
+  .cg-top{display:flex;align-items:center;justify-content:space-between;gap:32px;margin-bottom:4px}
+  .cg-top .seg{width:min(440px,44%);margin:0!important;flex:none}
+  .cg-cols{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:0 48px;align-items:start}
+  .cg-col>.sec:first-child{margin-top:6px}
+  .cg-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .cg-chip{min-height:64px}.cg-row .cg-chip{min-height:0}
+  .cg-pricebox{display:grid;grid-template-columns:1fr 1fr;gap:0 16px;align-items:end}
+  .cg-pricebox .field{margin-top:0!important}
+  .cg-pricebox:has(#cg-pay.hidden){grid-template-columns:1fr}
+}
+@media(min-width:1500px){html[data-role=admin] .wrap{max-width:1320px}.cg-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}

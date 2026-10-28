@@ -12,7 +12,7 @@
   var svs=function(){return M.services.filter(function(s){return !s.addon})};
   var ads=function(){return M.services.filter(function(s){return s.addon})};
   var prods=function(){return (M.products||[]).filter(function(p){return p.active!==0&&p.active!==false})};
-  var nowT=function(){var t=new Date().toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit',hour12:false,timeZone:TZ}).split(':'),h=+t[0],m=Math.ceil(+t[1]/5)*5;if(m===60){m=0;h=(h+1)%24}return String(h).padStart(2,'0')+':'+String(m).padStart(2,'0')};
+  var nowT=function(){var t=new Date().toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit',hour12:false,timeZone:TZ}).split(':'),h=+t[0],m=+t[1];return String(h).padStart(2,'0')+':'+String(m).padStart(2,'0')};
   var total=function(){var s=M.services.find(function(x){return x.id===CG.service});return (s?s.price:0)+CG.extras.reduce(function(t,id){return t+((M.services.find(function(x){return x.id===id})||{}).price||0)},0)};
   function init(){
     var s=svs()[0],tm=team(),me=tm.find(function(t){return t.id===M.me.id})||tm[0];
@@ -24,25 +24,30 @@
   window.vCargar=function(){
     if(!CG)init();
     var P=prods();
-    var h='<h1 class="title">Cargar turno</h1>'
-    +'<div class="seg" style="margin-bottom:6px">'+segb('mode','turno','Con turno')+segb('mode','fila','Sin turno · fila')+'</div>'
+    var h='<div class="cg-top"><h1 class="title">Cargar turno</h1><div class="seg cg-mode">'+segb('mode','turno','Con turno')+segb('mode','fila','Sin turno · fila')+'</div></div><div class="cg-cols"><div class="cg-col">'
     +'<section class="sec" style="margin-top:18px"><div class="sechead"><b>Servicio</b><span id="cg-tot"></span></div><div class="cg-grid">'+svs().map(function(s){return chip('service',s.id,esc(s.name),fmt(s.price))}).join('')+'</div>'
     +(ads().length?'<div class="cg-row" style="margin-top:10px">'+ads().map(function(a){return chip('extra',a.id,'+ '+esc(a.name),fmt(a.price))}).join('')+'</div>':'')+'</section>'
     +(owner()?'<section class="sec" id="cg-stf"><div class="sechead"><b id="cg-stl">Barbero</b><span></span></div><div class="cg-row">'+team().map(function(t){return chip('staff',t.id,esc(t.name))}).join('')+'</div></section>':'')
     +'<section class="sec" id="cg-when"><div class="sechead"><b>Cuándo</b><span></span></div><div class="cg-row">'+chip('day','hoy','Hoy')+chip('day','man','Mañana')
     +'<input type="date" id="cg-d" class="cg-in cg-date" value="'+CG.date+'" onchange="CGX.date(this.value)" aria-label="Otro día"></div>'
     +'<div class="cg-row" style="margin-top:10px"><input type="time" id="cg-t" class="cg-in cg-time" value="'+CG.time+'" oninput="CGX.time(this.value)" aria-label="Hora"><button type="button" class="cg-chip cg-now" onclick="CGX.now()"><b>Ahora</b></button></div></section>'
-    +'<section class="sec"><div class="sechead"><b>Cliente</b><span></span></div><div class="group pad"><div class="field" style="margin-top:0"><label for="cg-n">Nombre</label><input id="cg-n" autocomplete="off" autocapitalize="words" value="'+esc(CG.name)+'" oninput="CGX.find(this.value)"></div><div id="cg-sug" class="cg-row"></div>'
+    +'</div><div class="cg-col"><section class="sec"><div class="sechead"><b>Cliente</b><span></span></div><div class="group pad"><div class="field" style="margin-top:0"><label for="cg-n">Nombre</label><input id="cg-n" autocomplete="off" autocapitalize="words" value="'+esc(CG.name)+'" oninput="CGX.find(this.value)"></div><div id="cg-sug" class="cg-row"></div>'
     +'<div class="field"><label for="cg-w">WhatsApp</label><div class="pair"><input class="prefix" value="+54 9" disabled aria-label="Prefijo"><input id="cg-w" inputmode="tel" placeholder="2477 201614" value="'+esc(CG.wa)+'" oninput="CGX.find(this.value)"></div></div></div></section>'
     +(P.length?'<section class="sec"><details class="group cg-det"><summary><b>Productos</b><span id="cg-pc">Opcional</span></summary><div class="pad">'+P.map(function(p){return '<div class="hrow"><span>'+esc(p.name)+'<small>'+fmt(p.price)+(p.track?' · '+(p.stock>0?'Quedan '+p.stock:'Sin stock'):'')+'</small></span><span class="qty"><button type="button" onclick="CGX.qty(\''+p.id+'\',-1)" aria-label="Menos">−</button><b id="cg-q-'+p.id+'">0</b><button type="button" onclick="CGX.qty(\''+p.id+'\',1)" aria-label="Más">+</button></span></div>'}).join('')+'</div></details></section>':'')
     +'<section class="sec"><div class="sechead"><b>Estado</b><span>Cómo queda el turno</span></div><div class="seg cg-st">'+segb('status','pending','Pendiente')+segb('status','done','Hecho')+segb('status','no_show','No asistió')+segb('status','cancelled','Cancelado')+'</div>'
-    +'<div class="group pad" style="margin-top:12px"><div class="field" style="margin-top:0"><label for="cg-p">Precio</label><input id="cg-p" type="number" inputmode="numeric" value="'+CG.price+'" oninput="CGX.price(this.value)"></div>'
+    +'<div class="group pad cg-pricebox" style="margin-top:12px"><div class="field" style="margin-top:0"><label for="cg-p">Precio</label><input id="cg-p" type="number" inputmode="numeric" value="'+CG.price+'" oninput="CGX.price(this.value)"></div>'
     +'<div class="field" id="cg-pay"><label>Medio de pago</label><div class="seg">'+segb('pay','efectivo','Efectivo')+segb('pay','transferencia','Transferencia')+'</div></div></div></section>'
-    +'<p class="err" id="cg-err"></p><button class="btn primary" id="cg-go" onclick="CGX.save(false)">Cargar turno</button><button class="btn" onclick="CGX.save(true)">Cargar y volver a Mi día</button>';
+    +'<p class="err" id="cg-err"></p><button class="btn primary" id="cg-go" onclick="CGX.save(false)">Cargar turno</button><button class="btn" onclick="CGX.save(true)">Cargar y volver a Mi día</button><p class="cg-keys"><kbd>Enter</kbd> carga el turno · <kbd>Mayús</kbd> + <kbd>Enter</kbd> carga y vuelve a Mi día</p></div></div>';
     setTimeout(sync,0);
     return h;
   };
 
+  var fine=function(){return matchMedia('(hover:hover) and (pointer:fine)').matches};
+  document.addEventListener('keydown',function(e){
+    if(e.key!=='Enter'||e.isComposing||!CG||!$('cg-go'))return;var t=e.target;
+    if(!t||t.tagName!=='INPUT'||!/^cg-/.test(t.id||''))return;if(document.querySelector('.dlg'))return;
+    e.preventDefault();window.CGX.save(!!e.shiftKey);
+  });
   var KEY={mode:'mode',service:'service',staff:'staff',day:'dayk',status:'status',pay:'pay'};
   function mark(){
     document.querySelectorAll('#app [data-g]').forEach(function(b){var g=b.dataset.g,on=g==='extra'?CG.extras.indexOf(b.dataset.v)>-1:String(CG[KEY[g]])===b.dataset.v;b.classList.toggle('on',on)});
@@ -104,7 +109,7 @@
         }
         await load();
         CG.name='';CG.wa='';CG.prods={};CG.time=nowT();CG.price=total();
-        render();
+        render();if(fine()&&!go)setTimeout(function(){var n=$('cg-n');if(n)n.focus({preventScroll:true})},60);
         if(warn)alertD(warn);else{toast(msg);window.scrollTo({top:0,behavior:'smooth'})}
         if(go&&!warn)setTimeout(function(){location.href='/gestion/'},900);
       }catch(e){
