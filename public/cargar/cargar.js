@@ -109,11 +109,13 @@
                   :await post('/appt/create',{staff:owner()?CG.staff:undefined,service:CG.service,extras:CG.extras,products:pl,date:CG.date,time:CG.time,name:CG.name,whatsapp:wa,price:CG.price,force:!!force,client_id:CG.cid||undefined,fresh:CG.fresh||undefined});
         var msg=fila?'Anotado en la fila · lugar '+r.position:'Turno cargado',warn=null;
         if(r.dup)msg='Ese turno ya estaba cargado: no se duplicó';
-        else if(CG.status!=='pending'){
+        /* Si el turno ya existía (reintento tras un corte de conexión) también hay que marcarlo: antes quedaba Pendiente sin aviso.
+           Si ya estaba cerrado el Worker responde 409 y se deja como está. */
+        if(CG.status!=='pending'&&r.id){
           try{
             if(CG.status==='done'){await post('/appt/done',{id:r.id,staff:fila?CG.staff||undefined:undefined,serviceId:CG.service,amount:CG.price,pay:CG.pay});msg='Servicio registrado'}
             else{await post('/appt/status',{id:r.id,status:CG.status});msg=CG.status==='no_show'?'Cargado como "No asistió"':'Cargado como cancelado'}
-          }catch(e2){warn='El turno quedó cargado como Pendiente, pero no se pudo marcar: '+e2.message}
+          }catch(e2){if(!(r.dup&&e2.status===409))warn='El turno quedó cargado como Pendiente, pero no se pudo marcar: '+e2.message}
         }
         await load();
         CG.name='';CG.wa='';CG.prods={};CG.time=nowT();CG.price=total();CG.status='pending';CG.pay='efectivo';CG.cid='';CG.fresh=false;
