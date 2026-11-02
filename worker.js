@@ -1257,15 +1257,17 @@ async function route(req, db, u, p, env, ctx) {
   }
   if (p === '/api/admin/history') {
     const cur = n.date.slice(0, 7), first = ymAdd(cur, -11) + '-01', pct = +st.commission;
-    const sta = (await db.prepare('SELECT id,role,comm FROM bp_staff').all()).results, by = Object.fromEntries(sta.map(x => [x.id, x]));
-    const M = Object.fromEntries(Array.from({ length: 12 }, (_, i) => ymAdd(cur, -i)).map(m => [m, { m, income: 0, commissions: 0, expenses: 0, n: 0 }]));
+    const sta = (await db.prepare('SELECT id,name,role,comm FROM bp_staff').all()).results, by = Object.fromEntries(sta.map(x => [x.id, x]));
+    const M = Object.fromEntries(Array.from({ length: 12 }, (_, i) => ymAdd(cur, -i)).map(m => [m, { m, income: 0, commissions: 0, expenses: 0, n: 0, staff: [] }]));
     for (const r of (await db.prepare("SELECT substr(date,1,7) m,staff_id,COALESCE(SUM(amount),0) sv,COALESCE(SUM(prod_total),0) p,COALESCE(SUM(prod_comm),0) pc,COUNT(CASE WHEN kind!='venta' THEN 1 END) n FROM bp_appts WHERE status='done' AND date>=? GROUP BY 1,2").bind(first).all()).results) {
       const x = M[r.m], s2 = by[r.staff_id]; if (!x) continue;
-      x.income += r.sv + r.p; x.n += r.n; x.commissions += s2 && s2.role === 'owner' ? 0 : Math.round(r.sv * ((s2 && s2.comm) ?? pct) / 100) + r.pc;
+      const cm = s2 && s2.role === 'owner' ? 0 : Math.round(r.sv * ((s2 && s2.comm) ?? pct) / 100) + r.pc;
+      x.income += r.sv + r.p; x.n += r.n; x.commissions += cm;
+      x.staff.push({ id: r.staff_id, name: s2 ? s2.name : 'Mostrador', role: s2 ? s2.role : '', n: r.n, t: r.sv + r.p, c: cm }); // facturación de cada barbero en ese mes
     }
     for (const r of (await db.prepare('SELECT substr(paid_date,1,7) m,SUM(amount) t FROM bp_fees WHERE paid=1 AND paid_date>=? GROUP BY 1').bind(first).all()).results) if (M[r.m]) M[r.m].income += r.t;
     for (const r of (await db.prepare('SELECT substr(date,1,7) m,SUM(amount) t FROM bp_expenses WHERE date>=? GROUP BY 1').bind(first).all()).results) if (M[r.m]) M[r.m].expenses += r.t;
-    return J(200, { months: Object.values(M).map(x => ({ ...x, net: x.income - x.commissions - x.expenses })) });
+    return J(200, { months: Object.values(M).map(x => ({ ...x, staff: x.staff.sort((p, q) => q.t - p.t), net: x.income - x.commissions - x.expenses })) });
   }
   if (p === '/api/admin/audit') return J(200, { items: (await db.prepare('SELECT at,staff_name,action,detail FROM bp_audit ORDER BY at DESC,rowid DESC LIMIT 100').all()).results });
   if (p === '/api/admin/export') {
